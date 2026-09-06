@@ -118,7 +118,7 @@ class SmartScript
                 smart = false;
 
             if (!smart)
-                sLog->outError(LOG_FILTER_SQL, "SmartScript: Action target Creature(entry: %u) is not using SmartAI, action skipped to prevent crash.", c ? c->GetEntry() : (me ? me->GetEntry() : 0));
+                TC_LOG_ERROR("sql.sql", "SmartScript: Action target Creature(entry: %u) is not using SmartAI, action skipped to prevent crash.", c ? c->GetEntry() : (me ? me->GetEntry() : 0));
 
             return smart;
         }
@@ -132,7 +132,7 @@ class SmartScript
             if (!go || go->GetAIName() != "SmartGameObjectAI")
                 smart = false;
             if (!smart)
-                sLog->outError(LOG_FILTER_SQL, "SmartScript: Action target GameObject(entry: %u) is not using SmartGameObjectAI, action skipped to prevent crash.", g ? g->GetEntry() : (go ? go->GetEntry() : 0));
+                TC_LOG_ERROR("sql.sql", "SmartScript: Action target GameObject(entry: %u) is not using SmartGameObjectAI, action skipped to prevent crash.", g ? g->GetEntry() : (go ? go->GetEntry() : 0));
 
             return smart;
         }
@@ -185,13 +185,13 @@ class SmartScript
         {
             GameObject* gameObject = NULL;
 
-            CellCoord p(JadeCore::ComputeCellCoord(searchObject->GetPositionX(), searchObject->GetPositionY()));
+            CellCoord p(Trinity::ComputeCellCoord(searchObject->GetPositionX(), searchObject->GetPositionY()));
             Cell cell(p);
 
-            JadeCore::GameObjectWithDbGUIDCheck goCheck(*searchObject, guid);
-            JadeCore::GameObjectSearcher<JadeCore::GameObjectWithDbGUIDCheck> checker(searchObject, gameObject, goCheck);
+            Trinity::GameObjectWithDbGUIDCheck goCheck(*searchObject, guid);
+            Trinity::GameObjectSearcher<Trinity::GameObjectWithDbGUIDCheck> checker(searchObject, gameObject, goCheck);
 
-            TypeContainerVisitor<JadeCore::GameObjectSearcher<JadeCore::GameObjectWithDbGUIDCheck>, GridTypeMapContainer > objectChecker(checker);
+            TypeContainerVisitor<Trinity::GameObjectSearcher<Trinity::GameObjectWithDbGUIDCheck>, GridTypeMapContainer > objectChecker(checker);
             cell.Visit(p, objectChecker, *searchObject->GetMap(), *searchObject, searchObject->GetGridActivationRange());
 
             return gameObject;
@@ -200,13 +200,13 @@ class SmartScript
         Creature* FindCreatureNear(WorldObject* searchObject, uint32 guid) const
         {
             Creature* creature = NULL;
-            CellCoord p(JadeCore::ComputeCellCoord(searchObject->GetPositionX(), searchObject->GetPositionY()));
+            CellCoord p(Trinity::ComputeCellCoord(searchObject->GetPositionX(), searchObject->GetPositionY()));
             Cell cell(p);
 
-            JadeCore::CreatureWithDbGUIDCheck target_check(searchObject, guid);
-            JadeCore::CreatureSearcher<JadeCore::CreatureWithDbGUIDCheck> checker(searchObject, creature, target_check);
+            Trinity::CreatureWithDbGUIDCheck target_check(searchObject, guid);
+            Trinity::CreatureSearcher<Trinity::CreatureWithDbGUIDCheck> checker(searchObject, creature, target_check);
 
-            TypeContainerVisitor<JadeCore::CreatureSearcher <JadeCore::CreatureWithDbGUIDCheck>, GridTypeMapContainer > unit_checker(checker);
+            TypeContainerVisitor<Trinity::CreatureSearcher <Trinity::CreatureWithDbGUIDCheck>, GridTypeMapContainer > unit_checker(checker);
             cell.Visit(p, unit_checker, *searchObject->GetMap(), *searchObject, searchObject->GetGridActivationRange());
 
             return creature;

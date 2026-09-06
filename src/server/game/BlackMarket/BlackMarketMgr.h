@@ -79,11 +79,11 @@ struct BMAuctionEntry
 
 typedef struct BMAuctionTemplate BMAuctionTemplate;
 typedef struct BMAuctionEntry BMAuctionEntry;
+using BlackMarketTemplate = BMAuctionTemplate;
+using BlackMarketEntry = BMAuctionEntry;
 
 class BlackMarketMgr
 {
-    friend class ACE_Singleton<BlackMarketMgr, ACE_Null_Mutex>;
-
     private:
         BlackMarketMgr();
         ~BlackMarketMgr();
@@ -95,6 +95,11 @@ class BlackMarketMgr
         BMAuctionEntryMap BMAuctionsMap;
 
     public:
+        static BlackMarketMgr* instance()
+        {
+            static BlackMarketMgr* instance = new BlackMarketMgr();
+            return instance;
+        }
 
         BMAuctionTemplate* GetTemplate(uint32 id) const
         {
@@ -135,7 +140,7 @@ class BlackMarketMgr
         void BuildBlackMarketAuctionsPacket(WorldPacket& p_Data, uint32 p_GuidLow);
 };
 
-#define sBlackMarketMgr ACE_Singleton<BlackMarketMgr, ACE_Null_Mutex>::instance()
+#define sBlackMarketMgr BlackMarketMgr::instance()
 
 #endif
 #endif

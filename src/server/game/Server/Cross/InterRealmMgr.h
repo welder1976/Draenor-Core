@@ -42,11 +42,15 @@ typedef std::set<InterRealmClient*> ClientMap;
 
 class InterRealmMgr
 {
-    friend class ACE_Singleton<InterRealmMgr, ACE_Null_Mutex>;
     private:
         InterRealmMgr();
         ~InterRealmMgr() {}
     public:
+        static InterRealmMgr* instance()
+        {
+            static InterRealmMgr* instance = new InterRealmMgr();
+            return instance;
+        }
 
         bool LoadConfig(bool reload = false);
         const InterRealmDatabaseConfig* GetConfig(uint32 realmId) const;
@@ -67,7 +71,7 @@ class InterRealmMgr
     private:
 
         void Lock() { m_Mutex.lock(); }
-        void Unlock() { m_Mutex.release(); }
+        void Unlock() { m_Mutex.unlock(); }
 
     private:
 
@@ -76,6 +80,6 @@ class InterRealmMgr
         ACE_Thread_Mutex m_Mutex;
 };
 
-#define sInterRealmMgr ACE_Singleton<InterRealmMgr, ACE_Null_Mutex>::instance()
+#define sInterRealmMgr InterRealmMgr::instance()
 #endif
 #endif

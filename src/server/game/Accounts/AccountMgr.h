@@ -19,11 +19,12 @@ enum AccountOpResult
     AOR_PASS_TOO_LONG,
     AOR_NAME_ALREDY_EXIST,
     AOR_NAME_NOT_EXIST,
-    AOR_DB_INTERNAL_ERROR
+    AOR_DB_INTERNAL_ERROR,
+    AOR_ACCOUNT_BAD_LINK
 };
 
-#define MAX_ACCOUNT_STR 320
-#define MAX_PASSWORD_LENGTH 16
+#define MAX_PASS_STR 16
+#define MAX_EMAIL_STR 320
 
 namespace AccountMgr
 {
@@ -42,7 +43,7 @@ namespace AccountMgr
     uint32 GetSecurity(uint32 accountId, int32 realmId);
     bool GetName(uint32 accountId, std::string& name);
 
-    std::string CalculateShaPassHash(std::string& name, std::string& password);
+    std::string CalculateShaPassHash(const std::string& name, const std::string& password);
 
     bool normalizeString(std::string& utf8String, bool upper = true);
     bool IsPlayerAccount(uint32 gmlevel);

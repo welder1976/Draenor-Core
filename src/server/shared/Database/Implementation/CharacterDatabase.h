@@ -157,6 +157,10 @@ enum CharacterDatabaseStatements
     CHAR_UPD_NAME_LOG,
     CHAR_DEL_DECLINED_NAME,
     CHAR_SEL_ACCOUNT_NAME_BY_GUID,
+    CHAR_SEL_CHARACTER_LOOTLOCKOUTS,
+    CHAR_INS_CHARACTER_LOOTLOCKOUTS,
+    CHAR_DEL_CHARACTER_LOOTLOCKOUTS,
+    CHAR_DEL_ALL_LOOTLOCKOUTS,
 
     CHAR_INS_GUILD,
     CHAR_DEL_GUILD,
@@ -398,6 +402,7 @@ enum CharacterDatabaseStatements
 
     CHAR_INS_LFG_DATA,
     CHAR_DEL_LFG_DATA,
+    CHAR_UPD_LFG_DATA,
 
     CHAR_SEL_CHARACTER_AURA_FROZEN,
     CHAR_SEL_CHARACTER_ONLINE,
@@ -709,7 +714,7 @@ public:
 
     //- Constructors for sync and async connections
     CharacterDatabaseConnection(MySQLConnectionInfo& connInfo) : MySQLConnection(connInfo) {}
-    CharacterDatabaseConnection(ACE_Activation_Queue* q, MySQLConnectionInfo& connInfo) : MySQLConnection(q, connInfo) {}
+    CharacterDatabaseConnection(ProducerConsumerQueue<SQLOperation*>* q, MySQLConnectionInfo& connInfo) : MySQLConnection(q, connInfo) {}
 
     //- Loads database type specific prepared statements
     void DoPrepareStatements() override;

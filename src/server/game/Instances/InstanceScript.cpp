@@ -72,7 +72,7 @@ void InstanceScript::HandleGameObject(uint64 GUID, bool open, GameObject* go)
     if (go)
         go->SetGoState(open ? GO_STATE_ACTIVE : GO_STATE_READY);
     else
-        sLog->outDebug(LOG_FILTER_TSCR, "InstanceScript: HandleGameObject failed");
+        TC_LOG_DEBUG("scripts", "InstanceScript: HandleGameObject failed");
 }
 
 void InstanceScript::Update(uint32 p_Diff)
@@ -151,7 +151,7 @@ void InstanceScript::LoadMinionData(const MinionData* data)
 
         ++data;
     }
-    sLog->outDebug(LOG_FILTER_TSCR, "InstanceScript::LoadMinionData: " UI64FMTD " minions loaded.", uint64(minions.size()));
+    TC_LOG_DEBUG("scripts", "InstanceScript::LoadMinionData: " UI64FMTD " minions loaded.", uint64(minions.size()));
 }
 
 void InstanceScript::SetBossNumber(uint32 p_Number)
@@ -169,7 +169,7 @@ void InstanceScript::LoadDoorData(const DoorData* data)
 
         ++data;
     }
-    sLog->outDebug(LOG_FILTER_TSCR, "InstanceScript::LoadDoorData: " UI64FMTD " doors loaded.", uint64(doors.size()));
+    TC_LOG_DEBUG("scripts", "InstanceScript::LoadDoorData: " UI64FMTD " doors loaded.", uint64(doors.size()));
 }
 
 void InstanceScript::LoadScenariosInfos(BossScenarios const* p_Scenarios, uint32 p_ScenarioID)
@@ -529,7 +529,7 @@ void InstanceScript::DoUseDoorOrButton(uint64 uiGuid, uint32 uiWithRestoreTime, 
                 go->ResetDoorOrButton();
         }
         else
-            sLog->outError(LOG_FILTER_GENERAL, "SD2: Script call DoUseDoorOrButton, but gameobject entry %u is type %u.", go->GetEntry(), go->GetGoType());
+            TC_LOG_ERROR("server.worldserver", "SD2: Script call DoUseDoorOrButton, but gameobject entry %u is type %u.", go->GetEntry(), go->GetGoType());
     }
 }
 
@@ -561,7 +561,7 @@ void InstanceScript::DoUpdateWorldState(uint32 uiStateId, uint32 uiStateData)
                 player->SendUpdateWorldState(uiStateId, uiStateData);
     }
     else
-        sLog->outDebug(LOG_FILTER_TSCR, "DoUpdateWorldState attempt send data but no players in map.");
+        TC_LOG_DEBUG("scripts", "DoUpdateWorldState attempt send data but no players in map.");
 }
 
 // Send Notify to all players in instance
@@ -605,7 +605,8 @@ void InstanceScript::DoCompleteAchievement(uint32 achievement)
   if (!plrList.isEmpty())
       for (Map::PlayerList::const_iterator i = plrList.begin(); i != plrList.end(); ++i)
           if (Player *pPlayer = i->getSource())
-              pPlayer->CompletedAchievement(pAE);
+                //if (!pPlayer->HasAchieved(achievement))
+                    pPlayer->CompletedAchievement(pAE);
 }
 
 // Update Achievement Criteria for all players in instance
@@ -885,7 +886,7 @@ void InstanceScript::PlaySceneForPlayers(Position const p_Pos, uint32 p_ScenePac
 
 bool InstanceScript::CheckAchievementCriteriaMeet(uint32 criteria_id, Player const* /*source*/, Unit const* /*target*/ /*= NULL*/, uint64 /*miscvalue1*/ /*= 0*/)
 {
-    sLog->outError(LOG_FILTER_GENERAL, "Achievement system call InstanceScript::CheckAchievementCriteriaMeet but instance script for map %u not have implementation for achievement criteria %u",
+    TC_LOG_ERROR("server.worldserver", "Achievement system call InstanceScript::CheckAchievementCriteriaMeet but instance script for map %u not have implementation for achievement criteria %u",
         instance->GetId(), criteria_id);
     return false;
 }
@@ -928,45 +929,45 @@ void InstanceScript::SendEncounterUnit(uint32 p_Type, Unit* p_Unit /*= NULL*/, u
         case EncounterFrameType::ENCOUNTER_FRAME_UPDATE_PRIORITY:
             if (!p_Unit)
                 return;
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_CHANGE_PRIORITY, 8 + 1);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_CHANGE_PRIORITY, 8 + 1);
             l_Data.append(p_Unit->GetPackGUID());
             l_Data << uint8(p_Param1);  // TargetFramePriority
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_START_TIMER:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_TIMER_START, 4);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_TIMER_START, 4);
             l_Data << int32(0);         // TimeRemaining
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_START_OBJECTIVE:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_OBJECTIVE_START, 4);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_OBJECTIVE_START, 4);
             l_Data << int32(0);         // ObjectiveID
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_COMPLETE_OBJECTIVE:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_OBJECTIVE_COMPLETE, 4);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_OBJECTIVE_COMPLETE, 4);
             l_Data << int32(0);         // ObjectiveID
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_START:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_START, 4 * 4);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_START, 4 * 4);
             l_Data << uint32(m_InCombatResCount);
             l_Data << int32(m_MaxInCombatResCount);
             l_Data << int32(m_CombatResChargeTime);
             l_Data << uint32(m_NextCombatResChargeTime);
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_UPDATE_OBJECTIVE:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_OBJECTIVE_UPDATE, 4 * 2);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_OBJECTIVE_UPDATE, 4 * 2);
             l_Data << int32(0);         // ProgressAmount
             l_Data << int32(0);         // ObjectiveID
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_END:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_END, 0);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_END, 0);
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_IN_COMBAT_RESURRECTION:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_IN_COMBAT_RESURRECTION, 0);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_IN_COMBAT_RESURRECTION, 0);
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_PHASE_SHIFT_CHANGED:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_PHASE_SHIFT_CHANGED, 0);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_PHASE_SHIFT_CHANGED, 0);
             break;
         case EncounterFrameType::ENCOUNTER_FRAME_GAIN_COMBAT_RESURRECTION_CHARGE:
-            l_Data.Initialize(Opcodes::SMSG_INSTANCE_ENCOUNTER_GAIN_COMBAT_RESURRECTION_CHARGE, 4 * 2);
+            l_Data.Initialize(SMSG_INSTANCE_ENCOUNTER_GAIN_COMBAT_RESURRECTION_CHARGE, 4 * 2);
             l_Data << int32(m_InCombatResCount);
             l_Data << uint32(m_CombatResChargeTime);
             break;
@@ -1462,7 +1463,7 @@ void InstanceScript::RewardNewRealmRecord(RealmCompletedChallenge* p_OldChalleng
                 PreparedStatement* l_Statement = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHAR_TITLES);
                 l_Statement->setUInt32(0, l_LowGuid);
 
-                PreparedQueryResult l_Result = AsyncQuery(CharacterDatabase, l_Statement, [l_Index, l_Flag, l_LowGuid](PreparedQueryResult const& p_Result) -> void
+                AsyncQuery(CharacterDatabase, l_Statement, [l_Index, l_Flag, l_LowGuid](PreparedQueryResult const& p_Result) -> void
                 {
                     if (!p_Result)
                         return;
@@ -1630,8 +1631,8 @@ void InstanceScript::UpdateEncounterState(EncounterCreditType p_Type, uint32 p_C
                     if (Player* l_Player = l_Itr->getSource())
                     {
                         uint32 l_DungeonID = l_Player->GetGroup() ? sLFGMgr->GetDungeon(l_Player->GetGroup()->GetGUID()) : 0;
-                        if (l_Player->IsAtGroupRewardDistance(p_Source))
-                            sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
+                        //if (l_Player->IsAtGroupRewardDistance(p_Source))
+                           // sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
                     }
                 }
             }
@@ -1644,7 +1645,7 @@ void InstanceScript::UpdateEncounterState(EncounterCreditType p_Type, uint32 p_C
             if (p_Source != nullptr)
                 SendEncounterUnit(EncounterFrameType::ENCOUNTER_FRAME_END, p_Source);
 
-            WorldPacket l_Data(Opcodes::SMSG_BOSS_KILL_CREDIT, 4);
+            WorldPacket l_Data(SMSG_BOSS_KILL_CREDIT, 4);
             l_Data << int32((*l_Iter)->dbcEntry->ID);
             instance->SendToPlayers(&l_Data);
 
@@ -1661,7 +1662,7 @@ void InstanceScript::SendEncounterStart(uint32 p_EncounterID)
     if (!p_EncounterID)
         return;
 
-    WorldPacket l_Data(Opcodes::SMSG_ENCOUNTER_START);
+    WorldPacket l_Data(SMSG_ENCOUNTER_START);
     l_Data << uint32(p_EncounterID);
     l_Data << uint32(instance->GetDifficultyID());
     l_Data << uint32(instance->GetPlayers().getSize());
@@ -1715,7 +1716,7 @@ void InstanceScript::SendEncounterEnd(uint32 p_EncounterID, bool p_Success)
     if (!p_EncounterID)
         return;
 
-    WorldPacket l_Data(Opcodes::SMSG_ENCOUNTER_END);
+    WorldPacket l_Data(SMSG_ENCOUNTER_END);
     l_Data << uint32(p_EncounterID);
     l_Data << uint32(instance->GetDifficultyID());
     l_Data << uint32(instance->GetPlayers().getSize());
@@ -1819,7 +1820,7 @@ uint32 InstanceScript::GetEncounterIDForBoss(Creature* p_Boss) const
 void InstanceScript::UpdatePhasing()
 {
     PhaseUpdateData phaseUdateData;
-    phaseUdateData.AddConditionType(CONDITION_INSTANCE_DATA);
+    phaseUdateData.AddConditionType(CONDITION_INSTANCE_INFO);
 
     Map::PlayerList const& players = instance->GetPlayers();
     for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)

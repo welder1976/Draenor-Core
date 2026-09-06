@@ -11,9 +11,12 @@
 
 #include "ObjectDefines.h"
 #include "VehicleDefines.h"
+#include "Unit.h"
+#include <list>
 
 struct VehicleEntry;
 class Unit;
+class VehicleJoinEvent;
 
 typedef std::set<uint64> GuidSet;
 
@@ -36,15 +39,14 @@ class Vehicle : public TransportBase
 
         bool HasEmptySeat(int8 seatId) const;
         Unit* GetPassenger(int8 seatId) const;
-        int8 GetNextEmptySeat(int8 seatId, bool next) const;
+        SeatMap::const_iterator GetNextEmptySeat(int8 seatId, bool next) const;
         uint8 GetAvailableSeatCount() const;
-
+        uint32 GetRecAura() const { return _recAura; }
         bool CheckCustomCanEnter();
         bool AddPassenger(Unit* passenger, int8 seatId = -1);
         void RemovePassenger(Unit* passenger);
         void RelocatePassengers();
         void RemoveAllPassengers(bool dismount = false);
-        void Dismiss();
         bool IsVehicleInUse() const;
 
         inline bool ArePassengersSpawnedByAI() const { return _passengersSpawnedByAI; }
@@ -53,9 +55,18 @@ class Vehicle : public TransportBase
         inline bool CanBeCastedByPassengers() const { return _canBeCastedByPassengers; }
         void SetCanBeCastedByPassengers(bool canBeCastedByPassengers) { _canBeCastedByPassengers = canBeCastedByPassengers; }
 
-        SeatMap Seats;
+        void SetLastShootPos(Position const& pos) { _lastShootPos.Relocate(pos); }
+        Position GetLastShootPos() { return _lastShootPos; }
 
-        VehicleSeatEntry const* GetSeatForPassenger(Unit const* passenger);
+        SeatMap Seats;  ///< The collection of all seats on the vehicle. Including vacant ones.
+
+        VehicleSeatEntry const* GetSeatForPassenger(Unit const* passenger) const;
+
+        void RemovePendingEventsForPassenger(Unit* passenger);
+
+        protected:
+            friend class VehicleJoinEvent;
+            uint32 UsableSeatNum;         ///< Number of seats that match VehicleSeatEntry::UsableByPlayer, used for proper display flags
 
     private:
         enum Status
@@ -74,14 +85,36 @@ class Vehicle : public TransportBase
         /// This method transforms supplied global coordinates into local offsets
         void CalculatePassengerOffset(float& x, float& y, float& z, float& o);
 
-        Unit* _me;
-        VehicleEntry const* _vehicleInfo;
-        GuidSet vehiclePlayers;
-        uint32 _usableSeatNum;         // Number of seats that match VehicleSeatEntry::UsableByPlayer, used for proper display flags
-        uint32 _creatureEntry;         // Can be different than me->GetBase()->GetEntry() in case of players
-        Status _status;
+        void RemovePendingEvent(VehicleJoinEvent* e);
+        void RemovePendingEventsForSeat(int8 seatId);
 
+private:
+        Unit* _me;  ///< The underlying unit with the vehicle kit. Can be player or creature.
+        VehicleEntry const* _vehicleInfo;   ///< DBC data for vehicle
+        GuidSet vehiclePlayers;
+        uint32 _creatureEntry;         ///< Can be different than the entry of _me in case of players
+        Status _status;     ///< Internal variable for sanity checks
+        Position _lastShootPos;
+
+        uint32 _recAura;
         bool _passengersSpawnedByAI;
         bool _canBeCastedByPassengers;
+
+        typedef std::list<VehicleJoinEvent*> PendingJoinEventContainer;
+        PendingJoinEventContainer _pendingJoinEvents;       ///< Collection of delayed join events for prospective passengers
+};
+
+class VehicleJoinEvent : public BasicEvent
+{
+    friend class Vehicle;
+protected:
+    VehicleJoinEvent(Vehicle* v, Unit* u) : Target(v), Passenger(u), Seat(Target->Seats.end()) {}
+    ~VehicleJoinEvent();
+    bool Execute(uint64, uint32);
+    void Abort(uint64);
+
+    Vehicle* Target;
+    Unit* Passenger;
+    SeatMap::iterator Seat;
 };
 #endif

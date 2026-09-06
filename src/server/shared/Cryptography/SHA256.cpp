@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -21,12 +21,12 @@ SHA256Hash::~SHA256Hash()
     SHA256_Init(&mC);
 }
 
-void SHA256Hash::UpdateData(const uint8 *dta, int len)
+void SHA256Hash::UpdateData(const uint8* dta, int len)
 {
     SHA256_Update(&mC, dta, len);
 }
 
-void SHA256Hash::UpdateData(const std::string &str)
+void SHA256Hash::UpdateData(const std::string& str)
 {
     UpdateData((uint8 const*)str.c_str(), str.length());
 }
@@ -40,7 +40,7 @@ void SHA256Hash::UpdateBigNumbers(BigNumber* bn0, ...)
     bn = bn0;
     while (bn)
     {
-        UpdateData(bn->AsByteArray(), bn->GetNumBytes());
+        UpdateData(bn->AsByteArray().get(), bn->GetNumBytes());
         bn = va_arg(v, BigNumber*);
     }
     va_end(v);

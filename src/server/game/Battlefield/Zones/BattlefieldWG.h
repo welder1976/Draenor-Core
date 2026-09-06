@@ -1255,7 +1255,7 @@ struct BfWGGameObjectBuilding
                 if (m_WG->GetRelic())
                     m_WG->GetRelic()->RemoveFlag(GAMEOBJECT_FIELD_FLAGS, GO_FLAG_IN_USE);
                 else
-                    sLog->outError(LOG_FILTER_GENERAL, "BattlefieldWG: Relic not found.");
+                    TC_LOG_ERROR("server.worldserver", "BattlefieldWG: Relic not found.");
                 break;
         }
 
@@ -1266,7 +1266,7 @@ struct BfWGGameObjectBuilding
     {
         if (go == nullptr)
         {
-            ASSERT(false);
+            ABORT();
             return;
         }
 
@@ -1710,7 +1710,7 @@ struct WintergraspWorkshopData
 
                 // Found associate graveyard and update it
                 if (m_Type < BATTLEFIELD_WG_WORKSHOP_KEEP_WEST)
-                    if (m_WG && m_WG->GetGraveyardById(m_Type))
+                    if (m_WG->GetGraveyardById(m_Type))
                         m_WG->GetGraveyardById(m_Type)->GiveControlTo(TEAM_ALLIANCE);
 
                 m_TeamControl = team;
@@ -1748,7 +1748,7 @@ struct WintergraspWorkshopData
 
                 // Update graveyard control
                 if (m_Type < BATTLEFIELD_WG_WORKSHOP_KEEP_WEST)
-                    if (m_WG && m_WG->GetGraveyardById(m_Type))
+                    if (m_WG->GetGraveyardById(m_Type))
                         m_WG->GetGraveyardById(m_Type)->GiveControlTo(TEAM_HORDE);
 
                 m_TeamControl = team;

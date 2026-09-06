@@ -426,14 +426,6 @@ class boss_zorlok : public CreatureScript
                 pInstance->DoRemoveAurasDueToSpellOnPlayers(SPELL_FORCE_AND_VERVE);
                 pInstance->DoRemoveAurasDueToSpellOnPlayers(SPELL_PHEROMONES_OF_ZEAL);
 
-                if (me->GetMap()->IsLFR())
-                {
-                    me->SetLootRecipient(NULL);
-                    Player* l_Player = me->GetMap()->GetPlayers().begin()->getSource();
-                    if (l_Player && l_Player->GetGroup())
-                        sLFGMgr->AutomaticLootAssignation(me, l_Player->GetGroup());
-                }
-
                 _JustDied();
 
                 Map::PlayerList const& l_PlrList = me->GetMap()->GetPlayers();
@@ -1647,8 +1639,8 @@ class at_cancelling_noise : public AreaTriggerEntityScript
             if (!l_Caster)
                 return;
 
-            JadeCore::NearestAttackableUnitInObjectRangeCheck u_check(p_AreaTrigger, l_Caster, l_Radius);
-            JadeCore::UnitListSearcher<JadeCore::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, u_check);
+            Trinity::NearestAttackableUnitInObjectRangeCheck u_check(p_AreaTrigger, l_Caster, l_Radius);
+            Trinity::UnitListSearcher<Trinity::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, u_check);
             p_AreaTrigger->VisitNearbyObject(l_Radius, l_Searcher);
 
             if (!l_TargetList.empty())

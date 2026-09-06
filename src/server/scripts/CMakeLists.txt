@@ -28,6 +28,7 @@ if(SCRIPTS)
   include(Kalimdor/CMakeLists.txt)
   include(Outland/CMakeLists.txt)
   include(Northrend/CMakeLists.txt)
+  include(Events/CMakeLists.txt)
   include(Pandaria/CMakeLists.txt)
   include(PetBattle/CMakeLists.txt)
   include(Fun/CMakeLists.txt)
@@ -38,28 +39,6 @@ if(SCRIPTS)
   include(Classic/CMakeLists.txt)
   include(Instant-100/CMakeLists.txt)
 endif()
-
-
-MACRO( auto_group ProjectDirectory ProjectSources )
-    SET( DirectorySources "${ProjectSources}" )
-    FOREACH( Source ${DirectorySources} )
-        if ("${Source}" MATCHES "(/)+")
-            STRING( REGEX REPLACE "${ProjectDirectory}" "" RelativePath "${Source}" )
-            STRING( REGEX REPLACE "[\\\\/][^\\\\/]*$" "" RelativePath "${RelativePath}" )
-            STRING( REGEX REPLACE "^[\\\\/]" "" RelativePath "${RelativePath}" )
-            STRING( REGEX REPLACE "/" "\\\\\\\\" RelativePath "${RelativePath}" )
-            SOURCE_GROUP( "${RelativePath}" FILES ${Source} )
-        else()
-            SOURCE_GROUP( "" FILES ${Source} )
-        endif()
-    ENDFOREACH( Source )
-ENDMACRO( auto_group )
-
-auto_group("${CMAKE_CURRENT_SOURCE_DIR}" "${scripts_STAT_SRCS}")
-
-set(scripts_STAT_SRCS
-  ${scripts_STAT_SRCS}
-)
 
 message(STATUS "SCRIPT PREPARATION COMPLETE")
 message("")
@@ -158,6 +137,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/server/game/Scripting
   ${CMAKE_SOURCE_DIR}/src/server/game/Server
   ${CMAKE_SOURCE_DIR}/src/server/game/Server/Protocol
+  ${CMAKE_SOURCE_DIR}/src/server/game/Server/Packets
   ${CMAKE_SOURCE_DIR}/src/server/game/Skills
   ${CMAKE_SOURCE_DIR}/src/server/game/Spells
   ${CMAKE_SOURCE_DIR}/src/server/game/Spells/Auras
@@ -171,10 +151,11 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/server/game/Weather
   ${CMAKE_SOURCE_DIR}/src/server/game/World
   ${CMAKE_CURRENT_SOURCE_DIR}/PrecompiledHeaders
-  ${ACE_INCLUDE_DIR}
   ${MYSQL_INCLUDE_DIR}
   ${MSFRAMEWORK_INCLUDE_DIR}
 )
+
+GroupSources(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(scripts STATIC
   ${scripts_STAT_SRCS}
@@ -184,7 +165,12 @@ add_library(scripts STATIC
 add_definitions("-DGAME_SERVER_PROJECTS")
 set_property(TARGET scripts PROPERTY FOLDER "server")
 
-add_dependencies(scripts revision_data.h)
+target_link_libraries(scripts
+  shared
+  boost
+)
+
+add_dependencies(scripts revision.h)
 
 # Generate precompiled header
 if (USE_SCRIPTPCH)

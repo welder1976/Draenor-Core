@@ -184,7 +184,7 @@ void AuraApplication::_HandleEffect(uint8 effIndex, bool apply)
     ASSERT(aurEff);
     ASSERT(HasEffect(effIndex) == (!apply));
     ASSERT((1<<effIndex) & _effectsToApply);
-    sLog->outDebug(LOG_FILTER_SPELLS_AURAS, "AuraApplication::_HandleEffect: %u, apply: %u: amount: %u", aurEff->GetAuraType(), apply, aurEff->GetAmount());
+    TC_LOG_DEBUG("spells", "AuraApplication::_HandleEffect: %u, apply: %u: amount: %u", aurEff->GetAuraType(), apply, aurEff->GetAmount());
 
     if (apply)
     {
@@ -469,7 +469,7 @@ Aura* Aura::Create(SpellInfo const* spellproto, uint32 effMask, WorldObject* own
             ASSERT(aura->GetDynobjOwner()->GetMap() == aura->GetCaster()->GetMap());
             break;
         default:
-            ASSERT(false);
+            ABORT();
             return nullptr;
     }
     // aura can be removed in Unit::_AddAura call
@@ -754,29 +754,29 @@ void Aura::_UnapplyForTarget(Unit* p_Target, Unit* p_Caster, AuraApplication * p
     ASSERT(auraApp);*/
 
     if (!p_Target)
-        sLog->outAshran("Aura::_UnapplyForTarget no target[%u]", GetId());
+        TC_LOG_ERROR("server.worldserver", "Aura::_UnapplyForTarget no target[%u]", GetId());
 
     if (!p_AuraApp)
-        sLog->outAshran("Aura::_UnapplyForTarget no aura app[%u]", GetId());
+        TC_LOG_ERROR("server.worldserver", "Aura::_UnapplyForTarget no aura app[%u]", GetId());
 
     if (!p_AuraApp->GetRemoveMode())
-        sLog->outAshran("Aura::_UnapplyForTarget no aura app remove mode[%u]", GetId());
+        TC_LOG_ERROR("server.worldserver", "Aura::_UnapplyForTarget no aura app remove mode[%u]", GetId());
 
     ApplicationMap::iterator l_Itr = m_applications.find(p_Target->GetGUID());
 
     // TODO: Figure out why this happens
     if (l_Itr == m_applications.end())
     {
-        sLog->outAshran("Aura::_UnapplyForTarget, target:%u, caster:%u, spell:%u was not found in owners application map!",
+        TC_LOG_ERROR("server.worldserver", "Aura::_UnapplyForTarget, target:%u, caster:%u, spell:%u was not found in owners application map!",
         p_Target->GetGUIDLow(), p_Caster ? p_Caster->GetGUIDLow() : 0, p_AuraApp->GetBase()->GetSpellInfo()->Id);
-        ASSERT(false);
+        ABORT();
     }
 
     // aura has to be already applied
 
 
     if (l_Itr->second != p_AuraApp)
-        sLog->outAshran("Aura::_UnapplyForTarget itr->second != auraApp [%u]", GetId());
+        TC_LOG_ERROR("server.worldserver", "Aura::_UnapplyForTarget itr->second != auraApp [%u]", GetId());
 
     ASSERT(l_Itr->second == p_AuraApp);
     m_applications.erase(l_Itr);
@@ -867,7 +867,7 @@ void Aura::UpdateTargetMap(Unit* caster, bool apply)
             else
             {
                 // ok, we have one unit twice in target map (impossible, but...)
-                ASSERT(false);
+                ABORT();
             }
         }
 
@@ -920,10 +920,10 @@ void Aura::UpdateTargetMap(Unit* caster, bool apply)
             if (!GetOwner()->IsSelfOrInSameMap(itr->first))
             {
                 //TODO: There is a crash caused by shadowfiend load addon
-                sLog->outFatal(LOG_FILTER_SPELLS_AURAS, "Aura %u: Owner %s (map %u) is not in the same map as target %s (map %u).", GetSpellInfo()->Id,
+                TC_LOG_FATAL("spells", "Aura %u: Owner %s (map %u) is not in the same map as target %s (map %u).", GetSpellInfo()->Id,
                     GetOwner()->GetName(), GetOwner()->IsInWorld() ? GetOwner()->GetMap()->GetId() : uint32(-1),
                     itr->first->GetName(), itr->first->IsInWorld() ? itr->first->GetMap()->GetId() : uint32(-1));
-                ASSERT(false);
+                ABORT();
             }
             itr->first->_CreateAuraApplication(this, itr->second);
             ++itr;
@@ -2752,7 +2752,7 @@ void Aura::LoadScripts()
             m_loadedScripts.erase(bitr);
             continue;
         }
-        sLog->outDebug(LOG_FILTER_SPELLS_AURAS, "Aura::LoadScripts: Script `%s` for aura `%u` is loaded now", (*itr)->_GetScriptName()->c_str(), m_spellInfo->Id);
+        TC_LOG_DEBUG("spells", "Aura::LoadScripts: Script `%s` for aura `%u` is loaded now", (*itr)->_GetScriptName()->c_str(), m_spellInfo->Id);
         (*itr)->Register();
         ++itr;
     }
@@ -2773,7 +2773,7 @@ bool Aura::CallScriptCheckAreaTargetHandlers(Unit* target)
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 
     return true;
 }
@@ -2793,7 +2793,7 @@ void Aura::CallScriptDispel(DispelInfo* dispelInfo)
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptAfterDispel(DispelInfo* dispelInfo)
@@ -2810,7 +2810,7 @@ void Aura::CallScriptAfterDispel(DispelInfo* dispelInfo)
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 bool Aura::CallScriptEffectApplyHandlers(AuraEffect const* aurEff, AuraApplication const* aurApp, AuraEffectHandleModes mode)
@@ -2834,7 +2834,7 @@ bool Aura::CallScriptEffectApplyHandlers(AuraEffect const* aurEff, AuraApplicati
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 
     return preventDefault;
 }
@@ -2859,7 +2859,7 @@ bool Aura::CallScriptEffectRemoveHandlers(AuraEffect const* aurEff, AuraApplicat
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 
     return preventDefault;
 }
@@ -2881,7 +2881,7 @@ void Aura::CallScriptAfterEffectApplyHandlers(AuraEffect const* aurEff, AuraAppl
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptAfterEffectRemoveHandlers(AuraEffect const* aurEff, AuraApplication const* aurApp, AuraEffectHandleModes mode)
@@ -2901,7 +2901,7 @@ void Aura::CallScriptAfterEffectRemoveHandlers(AuraEffect const* aurEff, AuraApp
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 bool Aura::CallScriptEffectPeriodicHandlers(AuraEffect const* aurEff, AuraApplication const* aurApp)
@@ -2924,7 +2924,7 @@ bool Aura::CallScriptEffectPeriodicHandlers(AuraEffect const* aurEff, AuraApplic
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 
     return preventDefault;
 }
@@ -2946,7 +2946,7 @@ void Aura::CallScriptAfterEffectPeriodicHandlers(AuraEffect const* p_AurEff, Aur
 
     l_ScriptExecuteTime = getMSTime() - l_ScriptExecuteTime;
     if (l_ScriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), l_ScriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), l_ScriptExecuteTime);
 }
 
 
@@ -2964,7 +2964,7 @@ void Aura::CallScriptAuraUpdateHandlers(uint32 diff)
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectUpdateHandlers(uint32 diff, AuraEffect* aurEff)
@@ -2984,7 +2984,7 @@ void Aura::CallScriptEffectUpdateHandlers(uint32 diff, AuraEffect* aurEff)
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectUpdatePeriodicHandlers(AuraEffect* aurEff)
@@ -3004,7 +3004,7 @@ void Aura::CallScriptEffectUpdatePeriodicHandlers(AuraEffect* aurEff)
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectCalcAmountHandlers(AuraEffect const* aurEff, int32 & amount, bool & canBeRecalculated)
@@ -3024,7 +3024,7 @@ void Aura::CallScriptEffectCalcAmountHandlers(AuraEffect const* aurEff, int32 & 
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectCalcPeriodicHandlers(AuraEffect const* aurEff, bool & isPeriodic, int32 & amplitude)
@@ -3044,7 +3044,7 @@ void Aura::CallScriptEffectCalcPeriodicHandlers(AuraEffect const* aurEff, bool &
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectCalcSpellModHandlers(AuraEffect const* aurEff, SpellModifier* & spellMod)
@@ -3064,7 +3064,7 @@ void Aura::CallScriptEffectCalcSpellModHandlers(AuraEffect const* aurEff, SpellM
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectAbsorbHandlers(AuraEffect* aurEff, AuraApplication const* aurApp, DamageInfo & dmgInfo, uint32 & absorbAmount, bool& defaultPrevented)
@@ -3086,7 +3086,7 @@ void Aura::CallScriptEffectAbsorbHandlers(AuraEffect* aurEff, AuraApplication co
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectAfterAbsorbHandlers(AuraEffect* aurEff, AuraApplication const* aurApp, DamageInfo & dmgInfo, uint32 & absorbAmount)
@@ -3107,7 +3107,7 @@ void Aura::CallScriptEffectAfterAbsorbHandlers(AuraEffect* aurEff, AuraApplicati
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectManaShieldHandlers(AuraEffect* aurEff, AuraApplication const* aurApp, DamageInfo & dmgInfo, uint32 & absorbAmount, bool & /*defaultPrevented*/)
@@ -3127,7 +3127,7 @@ void Aura::CallScriptEffectManaShieldHandlers(AuraEffect* aurEff, AuraApplicatio
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptEffectAfterManaShieldHandlers(AuraEffect* aurEff, AuraApplication const* aurApp, DamageInfo & dmgInfo, uint32 & absorbAmount)
@@ -3148,7 +3148,7 @@ void Aura::CallScriptEffectAfterManaShieldHandlers(AuraEffect* aurEff, AuraAppli
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::SetScriptData(uint32 type, uint32 data)
@@ -3178,7 +3178,7 @@ bool Aura::CallScriptCheckProcHandlers(AuraApplication const* aurApp, ProcEventI
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
     return true;
 }
 
@@ -3200,7 +3200,7 @@ bool Aura::CallScriptPrepareProcHandlers(AuraApplication const* aurApp, ProcEven
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 
     return prepare;
 }
@@ -3219,7 +3219,7 @@ void Aura::CallScriptProcHandlers(AuraApplication const* aurApp, ProcEventInfo& 
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 void Aura::CallScriptAfterProcHandlers(AuraApplication const* aurApp, ProcEventInfo& eventInfo)
@@ -3236,7 +3236,7 @@ void Aura::CallScriptAfterProcHandlers(AuraApplication const* aurApp, ProcEventI
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 bool Aura::CallScriptEffectProcHandlers(AuraEffect const* aurEff, AuraApplication const* aurApp, ProcEventInfo& eventInfo)
@@ -3259,7 +3259,7 @@ bool Aura::CallScriptEffectProcHandlers(AuraEffect const* aurEff, AuraApplicatio
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 
     return preventDefault;
 }
@@ -3281,7 +3281,7 @@ void Aura::CallScriptAfterEffectProcHandlers(AuraEffect const* aurEff, AuraAppli
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 }
 
 bool Aura::CallScriptCanRrefreshProcHandlers()
@@ -3303,7 +3303,7 @@ bool Aura::CallScriptCanRrefreshProcHandlers()
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("AuraScript CanRefreshDuration [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "AuraScript CanRefreshDuration [%u] take more than 10 ms to execute (%u ms)", GetId(), scriptExecuteTime);
 
     return l_CanRefresh;
 }
@@ -3374,23 +3374,23 @@ void UnitAura::FillTargetMap(std::map<Unit*, uint32> & targets, Unit* caster)
                     case SPELL_EFFECT_APPLY_AREA_AURA_RAID:
                     {
                         targetList.push_back(GetUnitOwner());
-                        JadeCore::AnyGroupedPlayerInObjectRangeCheck u_check(GetUnitOwner(), GetUnitOwner(), radius, GetSpellInfo()->Effects[effIndex].Effect == SPELL_EFFECT_APPLY_AREA_AURA_RAID);
-                        JadeCore::UnitListSearcher<JadeCore::AnyGroupedPlayerInObjectRangeCheck> searcher(GetUnitOwner(), targetList, u_check);
+                        Trinity::AnyGroupedPlayerInObjectRangeCheck u_check(GetUnitOwner(), GetUnitOwner(), radius, GetSpellInfo()->Effects[effIndex].Effect == SPELL_EFFECT_APPLY_AREA_AURA_RAID);
+                        Trinity::UnitListSearcher<Trinity::AnyGroupedPlayerInObjectRangeCheck> searcher(GetUnitOwner(), targetList, u_check);
                         GetUnitOwner()->VisitNearbyObject(radius, searcher);
                         break;
                     }
                     case SPELL_EFFECT_APPLY_AREA_AURA_FRIEND:
                     {
                         targetList.push_back(GetUnitOwner());
-                        JadeCore::AnyFriendlyUnitInObjectRangeCheck u_check(GetUnitOwner(), GetUnitOwner(), radius);
-                        JadeCore::UnitListSearcher<JadeCore::AnyFriendlyUnitInObjectRangeCheck> searcher(GetUnitOwner(), targetList, u_check);
+                        Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetUnitOwner(), GetUnitOwner(), radius);
+                        Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetUnitOwner(), targetList, u_check);
                         GetUnitOwner()->VisitNearbyObject(radius, searcher);
                         break;
                     }
                     case SPELL_EFFECT_APPLY_AREA_AURA_ENEMY:
                     {
-                        JadeCore::AnyAoETargetUnitInObjectRangeCheck u_check(GetUnitOwner(), (GetCaster() ? GetCaster() : GetUnitOwner()), radius); // No GetCharmer in searcher
-                        JadeCore::UnitListSearcher<JadeCore::AnyAoETargetUnitInObjectRangeCheck> searcher(GetUnitOwner(), targetList, u_check);
+                        Trinity::AnyAoETargetUnitInObjectRangeCheck u_check(GetUnitOwner(), (GetCaster() ? GetCaster() : GetUnitOwner()), radius); // No GetCharmer in searcher
+                        Trinity::UnitListSearcher<Trinity::AnyAoETargetUnitInObjectRangeCheck> searcher(GetUnitOwner(), targetList, u_check);
                         GetUnitOwner()->VisitNearbyObject(radius, searcher);
                         break;
                     }
@@ -3449,15 +3449,203 @@ void DynObjAura::FillTargetMap(std::map<Unit*, uint32> & targets, Unit* /*caster
         if (GetSpellInfo()->Effects[effIndex].TargetB.GetTarget() == TARGET_DEST_DYNOBJ_ALLY
             || GetSpellInfo()->Effects[effIndex].TargetB.GetTarget() == TARGET_UNIT_DEST_AREA_ALLY)
         {
-            JadeCore::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
-            JadeCore::UnitListSearcher<JadeCore::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+            Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+            Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
             GetDynobjOwner()->VisitNearbyObject(radius, searcher);
         }
         else if (GetSpellInfo()->Effects[effIndex].Effect != SPELL_EFFECT_CREATE_AREATRIGGER)
         {
-            JadeCore::AnyAoETargetUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
-            JadeCore::UnitListSearcher<JadeCore::AnyAoETargetUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+            Trinity::AnyAoETargetUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+            Trinity::UnitListSearcher<Trinity::AnyAoETargetUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
             GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+        }
+        else
+        {
+            // Custom MoP Script
+            switch (GetSpellInfo()->Id)
+            {
+                case 121286: // Chi Sphere (Afterlife)
+                {
+                    std::list<Unit*> targetList;
+                    radius = 1.0f;
+
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+                    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+                    GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+
+                    if (!targetList.empty())
+                    {
+                        for (auto itr : targetList)
+                        {
+                            if (itr->GetGUID() == dynObjOwnerCaster->GetGUID())
+                            {
+                                dynObjOwnerCaster->CastSpell(itr, 121283, true); // Restore 1 Chi
+                                GetDynobjOwner()->SetDuration(0);
+                                return;
+                            }
+                        }
+                    }
+
+                    break;
+                }
+                case 117032: // Healing Sphere (Afterlife)
+                {
+                    std::list<Unit*> targetList;
+                    radius = 1.0f;
+
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+                    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+                    GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+
+                    if (!targetList.empty())
+                    {
+                        for (auto itr : targetList)
+                        {
+                            if (itr->GetGUID() == dynObjOwnerCaster->GetGUID())
+                            {
+                                dynObjOwnerCaster->CastSpell(itr, 125355, true); // Heal for 15% of life
+                                GetDynobjOwner()->SetDuration(0);
+                                return;
+                            }
+                        }
+                    }
+
+                    break;
+                }
+                case 121536: // Angelic Feather
+                {
+                    std::list<Unit*> targetList;
+                    radius = 1.0f;
+
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+                    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+                    GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+
+                    if (!targetList.empty())
+                    {
+                        for (auto itr : targetList)
+                        {
+                            dynObjOwnerCaster->CastSpell(itr, 121557, true); // Angelic Feather increase speed
+                            GetDynobjOwner()->SetDuration(0);
+                            return;
+                        }
+                    }
+
+                    break;
+                }
+                case 115460: // Healing Sphere
+                {
+                    std::list<Unit*> targetList;
+                    radius = 1.0f;
+
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+                    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+                    GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+
+                    if (!targetList.empty())
+                    {
+                        for (auto itr : targetList)
+                        {
+                            dynObjOwnerCaster->CastSpell(itr, 115464, true); // Healing Sphere heal
+                            GetDynobjOwner()->SetDuration(0);
+                            return;
+                        }
+                    }
+
+                    break;
+                }
+                case 119031: // Gift of the Serpent (Mastery)
+                {
+                    std::list<Unit*> targetList;
+                    radius = 1.0f;
+
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+                    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+                    GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+
+                    if (!targetList.empty())
+                    {
+                        for (auto itr : targetList)
+                        {
+                            dynObjOwnerCaster->CastSpell(itr, 124041, true); // Gift of the Serpent heal
+                            GetDynobjOwner()->SetDuration(0);
+                            return;
+                        }
+                    }
+
+                    break;
+                }
+                case 122035: // Path of Blossom
+                {
+                    std::list<Unit*> targetList;
+                    radius = 1.0f;
+
+                    Trinity::NearestAttackableUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+                    Trinity::UnitListSearcher<Trinity::NearestAttackableUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+                    GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+
+                    if (!targetList.empty())
+                    {
+                        for (auto itr : targetList)
+                        {
+                            dynObjOwnerCaster->CastSpell(itr, 122036, true); // Path of Blossom damage
+                            GetDynobjOwner()->SetDuration(0);
+                            return;
+                        }
+                    }
+
+                    break;
+                }
+                case 116011: // Rune of Power
+                {
+                    std::list<Unit*> targetList;
+                    bool affected = false;
+                    radius = 2.25f;
+
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+                    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+                    GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+
+                    if (!targetList.empty())
+                    {
+                        for (auto itr : targetList)
+                        {
+                            if (itr->GetGUID() == dynObjOwnerCaster->GetGUID())
+                            {
+                                dynObjOwnerCaster->CastSpell(itr, 116014, true); // Rune of Power
+                                affected = true;
+
+                                if (dynObjOwnerCaster->ToPlayer())
+                                    dynObjOwnerCaster->ToPlayer()->UpdateManaRegen();
+
+                                return;
+                            }
+                        }
+                    }
+
+                    if (!affected)
+                        dynObjOwnerCaster->RemoveAura(116014);
+
+                    break;
+                }
+                case 115817: // Cancel Barrier
+                {
+                    std::list<Unit*> targetList;
+                    radius = 6.0f;
+
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(GetDynobjOwner(), dynObjOwnerCaster, radius);
+                    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(GetDynobjOwner(), targetList, u_check);
+                    GetDynobjOwner()->VisitNearbyObject(radius, searcher);
+
+                    if (!targetList.empty())
+                        for (auto itr : targetList)
+                            itr->CastSpell(itr, 115856, true);
+
+                    break;
+                }
+                default:
+                    break;
+            }
         }
 
         for (UnitList::iterator itr = targetList.begin(); itr!= targetList.end();++itr)

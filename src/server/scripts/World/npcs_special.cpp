@@ -110,14 +110,14 @@ class npc_air_force_bots : public CreatureScript
                 }
 
                 if (!SpawnAssoc)
-                    sLog->outError(LOG_FILTER_SQL, "TCSR: Creature template entry %u has ScriptName npc_air_force_bots, but it's not handled by that script", creature->GetEntry());
+                    TC_LOG_ERROR("sql.sql", "TCSR: Creature template entry %u has ScriptName npc_air_force_bots, but it's not handled by that script", creature->GetEntry());
                 else
                 {
                     CreatureTemplate const* spawnedTemplate = sObjectMgr->GetCreatureTemplate(SpawnAssoc->spawnedCreatureEntry);
 
                     if (!spawnedTemplate)
                     {
-                        sLog->outError(LOG_FILTER_SQL, "TCSR: Creature template entry %u does not exist in DB, which is required by npc_air_force_bots", SpawnAssoc->spawnedCreatureEntry);
+                        TC_LOG_ERROR("sql.sql", "TCSR: Creature template entry %u does not exist in DB, which is required by npc_air_force_bots", SpawnAssoc->spawnedCreatureEntry);
                         SpawnAssoc = NULL;
                         return;
                     }
@@ -137,7 +137,7 @@ class npc_air_force_bots : public CreatureScript
                     SpawnedGUID = summoned->GetGUID();
                 else
                 {
-                    sLog->outError(LOG_FILTER_SQL, "TCSR: npc_air_force_bots: wasn't able to spawn Creature %u", SpawnAssoc->spawnedCreatureEntry);
+                    TC_LOG_ERROR("sql.sql", "TCSR: npc_air_force_bots: wasn't able to spawn Creature %u", SpawnAssoc->spawnedCreatureEntry);
                     SpawnAssoc = NULL;
                 }
 
@@ -819,7 +819,7 @@ void npc_doctor::npc_doctorAI::UpdateAI(uint32 const diff)
                     patientEntry = HordeSoldierId[rand() % 3];
                     break;
                 default:
-                    sLog->outError(LOG_FILTER_TSCR, "Invalid entry for Triage doctor. Please check your database");
+                    TC_LOG_ERROR("scripts", "Invalid entry for Triage doctor. Please check your database");
                     return;
             }
 
@@ -2078,8 +2078,8 @@ class npc_ebon_gargoyle : public CreatureScript
 
                 // Find victim of Summon Gargoyle spell
                 std::list<Unit*> targets;
-                JadeCore::AnyUnfriendlyUnitInObjectRangeCheck u_check(me, me, 30);
-                JadeCore::UnitListSearcher<JadeCore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(me, targets, u_check);
+                Trinity::AnyUnfriendlyUnitInObjectRangeCheck u_check(me, me, 30);
+                Trinity::UnitListSearcher<Trinity::AnyUnfriendlyUnitInObjectRangeCheck> searcher(me, targets, u_check);
                 me->VisitNearbyObject(30, searcher);
                 for (std::list<Unit*>::const_iterator iter = targets.begin(); iter != targets.end(); ++iter)
                     if ((*iter)->GetAura(49206, owner->GetGUID()))
@@ -2371,6 +2371,24 @@ class npc_training_dummy : public CreatureScript
 {
     public:
         npc_training_dummy() : CreatureScript("npc_training_dummy") { }
+
+            void SpellHit(Unit* source, SpellInfo const* spell)
+            {
+                if(source)
+                {
+                    Player* player = source->ToPlayer();
+                    if(!player)
+                        return;
+                    if (spell->Id == 73899 && (player->GetQuestStatus(25143) == QUEST_STATUS_INCOMPLETE || player->GetQuestStatus(26969) == QUEST_STATUS_INCOMPLETE))
+                    {
+                        player->KilledMonsterCredit(44175, 0);
+                    }
+                    if (spell->Id == 20271 && (player->GetQuestStatus(26918) == QUEST_STATUS_INCOMPLETE || player->GetQuestStatus(24528) == QUEST_STATUS_INCOMPLETE))
+                    {
+                        player->KilledMonsterCredit(44175, 0);
+                    }
+                }
+            }
 
         CreatureAI* GetAI(Creature* creature) const
         {
@@ -3483,8 +3501,8 @@ class npc_ring_of_frost : public CreatureScript
                 /// Find all the enemies
                 std::list<Unit*> l_Targets;
 
-                JadeCore::AnyUnfriendlyUnitInObjectRangeCheck l_Check(me, me, g_RingOfFrostMaxRadius);
-                JadeCore::UnitListSearcher<JadeCore::AnyUnfriendlyUnitInObjectRangeCheck> l_Searcher(me, l_Targets, l_Check);
+                Trinity::AnyUnfriendlyUnitInObjectRangeCheck l_Check(me, me, g_RingOfFrostMaxRadius);
+                Trinity::UnitListSearcher<Trinity::AnyUnfriendlyUnitInObjectRangeCheck> l_Searcher(me, l_Targets, l_Check);
                 me->VisitNearbyObject(g_RingOfFrostMaxRadius, l_Searcher);
 
                 for (Unit* l_Target : l_Targets)
@@ -5153,8 +5171,8 @@ public:
 				case EVENT_CHECK_CRAYFISH:
 				{
 					std::list<Unit*> targets;
-					JadeCore::AnyUnitInObjectRangeCheck u_check(me, 6.0f);
-					JadeCore::UnitListSearcher<JadeCore::AnyUnitInObjectRangeCheck> searcher(me, targets, u_check);
+					Trinity::AnyUnitInObjectRangeCheck u_check(me, 6.0f);
+					Trinity::UnitListSearcher<Trinity::AnyUnitInObjectRangeCheck> searcher(me, targets, u_check);
 					me->VisitNearbyObject(6.0f, searcher);
 					for (std::list<Unit*>::const_iterator itr = targets.begin(); itr != targets.end(); ++itr)
 					{

@@ -26,6 +26,8 @@
 #ifndef CROSS
 #include "GarrisonMgr.hpp"
 #endif /* not CROSS */
+#include "SpellPackets.h"
+#include "MovementPackets.h"
 
 void WorldSession::HandleUseItemOpcode(WorldPacket& p_RecvPacket)
 {
@@ -339,7 +341,7 @@ void WorldSession::HandleOpenItemOpcode(WorldPacket& p_Packet)
     if (!(l_ItemTemplate->Flags & ITEM_FLAG_OPENABLE) && !l_Item->HasFlag(ITEM_FIELD_DYNAMIC_FLAGS, ITEM_FIELD_FLAG_WRAPPED))
     {
         m_Player->SendEquipError(EQUIP_ERR_CLIENT_LOCKED_OUT, l_Item, NULL);
-        sLog->outError(LOG_FILTER_NETWORKIO, "Possible hacking attempt: Player %s [guid: %u] tried to open item [guid: %u, entry: %u] which is not openable!",
+        TC_LOG_ERROR("network", "Possible hacking attempt: Player %s [guid: %u] tried to open item [guid: %u, entry: %u] which is not openable!",
                 m_Player->GetName(), m_Player->GetGUIDLow(), l_Item->GetGUIDLow(), l_ItemTemplate->ItemId);
 
         return;
@@ -364,7 +366,7 @@ void WorldSession::HandleOpenItemOpcode(WorldPacket& p_Packet)
             if (!l_LockInfo)
             {
                 m_Player->SendEquipError(EQUIP_ERR_ITEM_LOCKED, l_Item, NULL);
-                sLog->outError(LOG_FILTER_NETWORKIO, "WORLD::OpenItem: item [guid = %u] has an unknown lockId: %u!", l_Item->GetGUIDLow(), l_LockID);
+                TC_LOG_ERROR("network", "WORLD::OpenItem: item [guid = %u] has an unknown lockId: %u!", l_Item->GetGUIDLow(), l_LockID);
 
                 return;
             }
@@ -398,7 +400,7 @@ void WorldSession::HandleOpenItemOpcode(WorldPacket& p_Packet)
             }
             else
             {
-                sLog->outError(LOG_FILTER_NETWORKIO, "Wrapped item %u don't have record in character_gifts table and will deleted", l_Item->GetGUIDLow());
+                TC_LOG_ERROR("network", "Wrapped item %u don't have record in character_gifts table and will deleted", l_Item->GetGUIDLow());
                 m_Player->DestroyItem(l_Item->GetBagSlot(), l_Item->GetSlot(), true);
 
                 return;
@@ -458,130 +460,69 @@ void WorldSession::HandleGameobjectReportUse(WorldPacket& recvPacket)
 
 void WorldSession::HandleCastSpellOpcode(WorldPacket& p_RecvPacket)
 {
-    std::string l_SrcTargetName;
+    WorldPackets::Spells::CastSpell castPacket(std::move(p_RecvPacket));
+    castPacket.Read();
+    WorldPackets::Spells::SpellCastRequest const& cast = castPacket.Cast;
 
-    uint64 l_TargetItemGUID = 0;
-    uint64 l_SourceTargetGUID = 0;
-    uint64 l_DestinationTargetGUID = 0;
-    uint64 l_TargetGUID = 0;
-    uint64 l_UnkGUID = 0;
+    std::string l_SrcTargetName = cast.Target.Name;
 
-    float l_MissibleTrajectorySpeed = 0.00f;
-    float l_MissibleTrajectoryPitch = 0.00f;
+    uint64 l_TargetItemGUID = uint64(cast.Target.Item);
+    uint64 l_SourceTargetGUID = cast.Target.SrcLocation ? uint64(cast.Target.SrcLocation->Transport) : 0;
+    uint64 l_DestinationTargetGUID = cast.Target.DstLocation ? uint64(cast.Target.DstLocation->Transport) : 0;
+    uint64 l_TargetGUID = uint64(cast.Target.Unit);
+    uint64 l_UnkGUID = uint64(cast.Charmer);
 
-    uint8* l_SpellWeightType      = nullptr;
-    uint32* l_SpellWeightID       = nullptr;
-    uint32* l_SpellWeightQuantity = nullptr;
+    float l_MissibleTrajectorySpeed = cast.MissileTrajectory.Speed;
+    float l_MissibleTrajectoryPitch = cast.MissileTrajectory.Pitch;
 
-    uint32 l_SpellID            = 0;
-    uint32 l_Misc[2]            = {0, 0};
-    uint32 l_TargetFlags        = 0;
-    uint32 l_NameLenght         = 0;
-    uint32 l_SpellWeightCount   = 0;
+    uint32 l_SpellID = uint32(cast.SpellID);
+    uint32 l_Misc[2] = { uint32(cast.Misc[0]), uint32(cast.Misc[1]) };
+    uint32 l_TargetFlags = cast.Target.Flags;
 
-    float l_UnkFloat = 0;
+    float l_UnkFloat = cast.Target.Orientation ? *cast.Target.Orientation : 0.0f;
 
-    uint8 l_CastCount = 0;
-    uint8 l_SendCastFlag = 0;
+    uint8 l_CastCount = cast.CastID;
+    uint8 l_SendCastFlag = cast.SendCastFlags;
+    (void)l_SendCastFlag;
 
-    bool l_HasSourceTarget      = false;
-    bool l_HasDestinationTarget = false;
-    bool l_HasUnkFloat          = false;
-    bool l_HasMovementInfos     = false;
+    bool l_HasSourceTarget = cast.Target.SrcLocation.is_initialized();
+    bool l_HasDestinationTarget = cast.Target.DstLocation.is_initialized();
+    (void)l_HasSourceTarget;
 
     WorldLocation l_SourceTargetPosition;
     WorldLocation l_DestinationTargetPosition;
+    if (cast.Target.SrcLocation)
+        l_SourceTargetPosition.Relocate(cast.Target.SrcLocation->Location);
+    if (cast.Target.DstLocation)
+        l_DestinationTargetPosition.Relocate(cast.Target.DstLocation->Location);
 
-    p_RecvPacket >> l_CastCount;
-
-    for (int l_I = 0; l_I < 2; l_I++)
-        p_RecvPacket >> l_Misc[l_I];
-
-    p_RecvPacket >> l_SpellID;
-    p_RecvPacket.read_skip<uint32>(); // unk
-
-    l_TargetFlags           = p_RecvPacket.ReadBits(23);
-    l_HasSourceTarget       = p_RecvPacket.ReadBit();
-    l_HasDestinationTarget  = p_RecvPacket.ReadBit();
-    l_HasUnkFloat           = p_RecvPacket.ReadBit();
-    l_NameLenght            = p_RecvPacket.ReadBits(7);
-    p_RecvPacket.FlushBits();
-    p_RecvPacket.readPackGUID(l_TargetGUID);
-    p_RecvPacket.readPackGUID(l_TargetItemGUID);
-
-    if (l_HasSourceTarget)
+    if (cast.MoveUpdate)
     {
-        p_RecvPacket.readPackGUID(l_SourceTargetGUID);
-        p_RecvPacket >> l_SourceTargetPosition.m_positionX;
-        p_RecvPacket >> l_SourceTargetPosition.m_positionY;
-        p_RecvPacket >> l_SourceTargetPosition.m_positionZ;
+        WorldPacket movePkt(CMSG_MOVE_HEARTBEAT);
+        MovementInfo moveInfo = *cast.MoveUpdate;
+        movePkt << moveInfo;
+        movePkt.rpos(0);
+        HandleMovementOpcodes(movePkt);
     }
 
-    if (l_HasDestinationTarget)
-    {
-        p_RecvPacket.readPackGUID(l_DestinationTargetGUID);
-        p_RecvPacket >> l_DestinationTargetPosition.m_positionX;
-        p_RecvPacket >> l_DestinationTargetPosition.m_positionY;
-        p_RecvPacket >> l_DestinationTargetPosition.m_positionZ;
-    }
-
-    if (l_HasUnkFloat)
-        p_RecvPacket >> l_UnkFloat;
-
-    l_SrcTargetName = p_RecvPacket.ReadString(l_NameLenght);
-
-    p_RecvPacket >> l_MissibleTrajectoryPitch;
-    p_RecvPacket >> l_MissibleTrajectorySpeed;
-
-    p_RecvPacket.readPackGUID(l_UnkGUID);
-
-    l_SendCastFlag      = p_RecvPacket.ReadBits(5); ///< l_SendCastFlag is never read 01/18/16
-    l_HasMovementInfos  = p_RecvPacket.ReadBit();
-    l_SpellWeightCount  = p_RecvPacket.ReadBits(2);
-
-    if (l_HasMovementInfos)
-        HandleMovementOpcodes(p_RecvPacket);
-
-    if (l_SpellWeightCount)
-    {
-        l_SpellWeightType       = new uint8[l_SpellWeightCount];
-        l_SpellWeightID         = new uint32[l_SpellWeightCount];
-        l_SpellWeightQuantity   = new uint32[l_SpellWeightCount];
-
-        for (uint32 l_I = 0; l_I < l_SpellWeightCount; ++l_I)
-        {
-            l_SpellWeightType[l_I] = p_RecvPacket.ReadBits(2);
-            p_RecvPacket >> l_SpellWeightID[l_I];
-            p_RecvPacket >> l_SpellWeightQuantity[l_I];
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-
-    if (l_SpellWeightCount)
+    if (!cast.Weight.empty())
     {
         GetPlayer()->GetArchaeologyMgr().ClearProjectCost();
 
-        for (uint32 l_I = 0; l_I < l_SpellWeightCount; l_I++)
+        for (WorldPackets::Spells::SpellWeight const& weight : cast.Weight)
         {
-            switch (l_SpellWeightType[l_I])
+            switch (weight.Type)
             {
-                case SPELL_WEIGHT_ARCHEOLOGY_KEYSTONES: // Keystones
-                    GetPlayer()->GetArchaeologyMgr().AddProjectCost(l_SpellWeightID[l_I], l_SpellWeightQuantity[l_I], false);
+                case SPELL_WEIGHT_ARCHEOLOGY_KEYSTONES:
+                    GetPlayer()->GetArchaeologyMgr().AddProjectCost(weight.ID, weight.Quantity, false);
                     break;
-
-                case SPELL_WEIGHT_ARCHEOLOGY_FRAGMENTS: // Fragments
-                    GetPlayer()->GetArchaeologyMgr().AddProjectCost(l_SpellWeightID[l_I], l_SpellWeightQuantity[l_I], true);
+                case SPELL_WEIGHT_ARCHEOLOGY_FRAGMENTS:
+                    GetPlayer()->GetArchaeologyMgr().AddProjectCost(weight.ID, weight.Quantity, true);
                     break;
-
                 default:
                     break;
             }
         }
-
-        delete[] l_SpellWeightType;
-        delete[] l_SpellWeightID;
-        delete[] l_SpellWeightQuantity;
     }
 
     // ignore for remote control state (for player case)
@@ -595,7 +536,7 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& p_RecvPacket)
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(l_SpellID);
     if (!spellInfo)
     {
-        sLog->outError(LOG_FILTER_NETWORKIO, "WORLD: unknown spell id %u", l_SpellID);
+        TC_LOG_ERROR("network", "WORLD: unknown spell id %u", l_SpellID);
         p_RecvPacket.rfinish(); // prevent spam at ignore packet
         return;
     }
@@ -867,20 +808,20 @@ void WorldSession::HandlePetCancelAuraOpcode(WorldPacket& p_RecvPacket)
     SpellInfo const* l_SpellInfo = sSpellMgr->GetSpellInfo(l_SpellID);
     if (!l_SpellInfo)
     {
-        sLog->outError(LOG_FILTER_NETWORKIO, "WORLD: unknown PET spell id %u", l_SpellID);
+        TC_LOG_ERROR("network", "WORLD: unknown PET spell id %u", l_SpellID);
         return;
     }
 
     Creature* l_Pet = ObjectAccessor::GetCreatureOrPetOrVehicle(*m_Player, l_PetGUID);
     if (!l_Pet)
     {
-        sLog->outError(LOG_FILTER_NETWORKIO, "HandlePetCancelAura: Attempt to cancel an aura for non-existant pet %u by player '%s'", uint32(GUID_LOPART(l_PetGUID)), GetPlayer()->GetName());
+        TC_LOG_ERROR("network", "HandlePetCancelAura: Attempt to cancel an aura for non-existant pet %u by player '%s'", uint32(GUID_LOPART(l_PetGUID)), GetPlayer()->GetName());
         return;
     }
 
     if (l_Pet != GetPlayer()->GetGuardianPet() && l_Pet != GetPlayer()->GetCharm())
     {
-        sLog->outError(LOG_FILTER_NETWORKIO, "HandlePetCancelAura: Pet %u is not a pet of player '%s'", uint32(GUID_LOPART(l_PetGUID)), GetPlayer()->GetName());
+        TC_LOG_ERROR("network", "HandlePetCancelAura: Pet %u is not a pet of player '%s'", uint32(GUID_LOPART(l_PetGUID)), GetPlayer()->GetName());
         return;
     }
 
@@ -1262,7 +1203,7 @@ void WorldSession::HandleUseToyOpcode(WorldPacket& p_RecvData)
     SpellInfo const* l_SpellInfo = sSpellMgr->GetSpellInfo(l_SpellID);
     if (!l_SpellInfo)
     {
-        sLog->outError(LOG_FILTER_NETWORKIO, "WORLD: unknown spell id %u", l_SpellID);
+        TC_LOG_ERROR("network", "WORLD: unknown spell id %u", l_SpellID);
         p_RecvData.rfinish();
         return;
     }
@@ -1270,7 +1211,7 @@ void WorldSession::HandleUseToyOpcode(WorldPacket& p_RecvData)
     ItemTemplate const* l_ItemProto = sObjectMgr->GetItemTemplate(l_ItemID);
     if (!l_ItemProto)
     {
-        sLog->outError(LOG_FILTER_NETWORKIO, "WORLD: unknown item id %u", l_ItemID);
+        TC_LOG_ERROR("network", "WORLD: unknown item id %u", l_ItemID);
         p_RecvData.rfinish();
         return;
     }
@@ -1288,7 +1229,7 @@ void WorldSession::HandleUseToyOpcode(WorldPacket& p_RecvData)
     /// Cheater?
     if (!l_Found)
     {
-        sLog->outAshran("HandleUseToyOpcode: Player %s [%u] Trying to spoof packet and cast spell %u", m_Player->GetName(), m_Player->GetGUIDLow(), l_SpellID);
+        TC_LOG_ERROR("server.worldserver", "HandleUseToyOpcode: Player %s [%u] Trying to spoof packet and cast spell %u", m_Player->GetName(), m_Player->GetGUIDLow(), l_SpellID);
         p_RecvData.rfinish();
         return;
     }

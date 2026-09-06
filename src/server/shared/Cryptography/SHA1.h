@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -11,30 +11,38 @@
 
 #include "Define.h"
 #include <string>
+#include <type_traits>
 #include <openssl/sha.h>
+#include <openssl/evp.h>
 
 class BigNumber;
 
 class SHA1Hash
 {
-    public:
-        SHA1Hash();
-        ~SHA1Hash();
+public:
+    using DigestLength = std::integral_constant<size_t, SHA_DIGEST_LENGTH>;
 
-        void UpdateBigNumbers(BigNumber* bn0, ...);
+    SHA1Hash();
+    SHA1Hash(SHA1Hash const& other);     // copy
+    SHA1Hash(SHA1Hash&& other);          // move
+    SHA1Hash& operator=(SHA1Hash other); // assign
+    ~SHA1Hash();
 
-        void UpdateData(const uint8 *dta, int len);
-        void UpdateData(const std::string &str);
+    void Swap(SHA1Hash& other) throw();
+    friend void Swap(SHA1Hash& left, SHA1Hash& right) { left.Swap(right); }
+    void UpdateBigNumbers(BigNumber* bn0, ...);
 
-        void Initialize();
-        void Finalize();
+    void UpdateData(const uint8* dta, int len);
+    void UpdateData(const std::string& str);
 
-        uint8 *GetDigest(void) { return mDigest; };
-        int GetLength(void) const { return SHA_DIGEST_LENGTH; };
+    void Initialize();
+    void Finalize();
 
-    private:
-        SHA_CTX mC;
-        uint8 mDigest[SHA_DIGEST_LENGTH];
+    uint8* GetDigest(void) { return m_digest; }
+    int GetLength() const { return SHA_DIGEST_LENGTH; }
+
+private:
+    EVP_MD_CTX* m_ctx;
+    uint8 m_digest[SHA_DIGEST_LENGTH];
 };
 #endif
-

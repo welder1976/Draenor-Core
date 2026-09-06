@@ -305,6 +305,10 @@ class boss_deathbringer_saurfang : public CreatureScript
                 //instance->DoRemoveAurasDueToSpellOnPlayers(SPELL_MARK_OF_THE_FALLEN_CHAMPION);
                 if (Creature* creature = ObjectAccessor::GetCreature(*me, instance->GetData64(DATA_SAURFANG_EVENT_NPC)))
                     creature->AI()->DoAction(ACTION_START_OUTRO);
+
+                //Gunship Battle, auto complete
+                instance->DoCompleteAchievement(RAID_MODE(4536, 4612, 4536, 4612));
+                instance->DoCastSpellOnPlayers(72959);
             }
 
             void AttackStart(Unit* victim)
@@ -601,7 +605,7 @@ class npc_high_overlord_saurfang_icc : public CreatureScript
                             return;
 
                         GetCreatureListWithEntryInGrid(_guardList, me, NPC_SE_KOR_KRON_REAVER, 20.0f);
-                        _guardList.sort(JadeCore::ObjectDistanceOrderPred(me));
+                        _guardList.sort(Trinity::ObjectDistanceOrderPred(me));
                         uint32 x = 1;
                         for (std::list<Creature*>::iterator itr = _guardList.begin(); itr != _guardList.end(); ++x, ++itr)
                             (*itr)->AI()->SetData(0, x);
@@ -812,7 +816,7 @@ class npc_muradin_bronzebeard_icc : public CreatureScript
 
                         _events.SetPhase(PHASE_INTRO_A);
                         GetCreatureListWithEntryInGrid(_guardList, me, NPC_SE_SKYBREAKER_MARINE, 20.0f);
-                        _guardList.sort(JadeCore::ObjectDistanceOrderPred(me));
+                        _guardList.sort(Trinity::ObjectDistanceOrderPred(me));
                         uint32 x = 1;
                         for (std::list<Creature*>::iterator itr = _guardList.begin(); itr != _guardList.end(); ++x, ++itr)
                             (*itr)->AI()->SetData(0, x);
@@ -1192,7 +1196,7 @@ class spell_deathbringer_blood_nova_targeting: public SpellScriptLoader
                 // select one random target, with preference of ranged targets
                 uint32 targetsAtRange = 0;
                 uint32 const minTargets = uint32(GetCaster()->GetMap()->GetSpawnMode() & 1 ? 10 : 4);
-                targets.sort(JadeCore::ObjectDistanceOrderPred(GetCaster(), false));
+                targets.sort(Trinity::ObjectDistanceOrderPred(GetCaster(), false));
 
                 // get target count at range
                 for (std::list<WorldObject*>::iterator itr = targets.begin(); itr != targets.end(); ++itr, ++targetsAtRange)

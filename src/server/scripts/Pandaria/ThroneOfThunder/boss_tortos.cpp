@@ -204,14 +204,6 @@ class boss_tortos : public CreatureScript
                     pInstance->DoRemoveAurasDueToSpellOnPlayers(SPELL_KICK_SHELL_OVERRIDER);
                 }
 
-                if (me->GetMap()->IsLFR())
-                {
-                    me->SetLootRecipient(NULL);
-                    Player* l_Player = me->GetMap()->GetPlayers().begin()->getSource();
-                    if (l_Player && l_Player->GetGroup())
-                        sLFGMgr->AutomaticLootDistribution(me, l_Player->GetGroup());
-                }
-
                 me->SummonGameObject(GOB_TORTOS_DEATH_COLLISION, 6038.69f, 4923.87f, -61.1953f, 1.513821f, 0, 0, 0, 1.0f, 0);
             }
 
@@ -449,7 +441,7 @@ class mob_whirl_turtle : public CreatureScript
 
                         me->SetSpeed(MOVE_WALK, 1.0f);
                         me->SetSpeed(MOVE_RUN, 1.0f);
-                        JadeCore::RandomResizeList(plrList, 1);
+                        Trinity::RandomResizeList(plrList, 1);
                         me->GetMotionMaster()->MoveChase(plrList.front());
                         me->CombatStart(plrList.front());
                         break;
@@ -505,7 +497,7 @@ class mob_whirl_turtle : public CreatureScript
                             break;
                         }
 
-                        JadeCore::RandomResizeList(plrList, 1);
+                        Trinity::RandomResizeList(plrList, 1);
                         me->GetMotionMaster()->Clear();
                         me->GetMotionMaster()->MoveChase(plrList.front());
                         events.ScheduleEvent(EVENT_SWITCH_TARGET, 3000);
@@ -594,7 +586,7 @@ class spell_rockfall: public SpellScriptLoader
                 if (targets.empty())
                     return;
 
-                JadeCore::RandomResizeList(targets, 1);
+                Trinity::RandomResizeList(targets, 1);
             }
 
             void HandleOnHit()

@@ -30,6 +30,12 @@ struct PerfLog
 class TimeDiffMgr
 {
 public:
+    static TimeDiffMgr* instance()
+    {
+        static TimeDiffMgr instance;
+        return &instance;
+    }
+
     TimeDiffMgr() {}
     void Initialize();
     void Update(uint32 diff);
@@ -44,6 +50,6 @@ private:
     PerfLog m_prevLog[INTERVAL_MAX];
 };
 
-#define sTimeDiffMgr ACE_Singleton<TimeDiffMgr, ACE_Null_Mutex>::instance()
+#define sTimeDiffMgr TimeDiffMgr::instance()
 
 #endif // TIMEDIFFMGR_H

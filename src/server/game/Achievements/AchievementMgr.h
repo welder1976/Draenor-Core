@@ -10,6 +10,8 @@
 #define __TRINITY_ACHIEVEMENTMGR_H
 
 #include "Common.h"
+#include <mutex>
+#include <map>
 #include "LockedMap.h"
 #include "DatabaseEnv.h"
 #include "DBCEnums.h"
@@ -35,6 +37,9 @@ struct CriteriaProgress
     time_t date;                                            // latest update time.
     uint64 CompletedGUID;                                   // GUID of the player that completed this criteria (guild achievements)
     bool changed;
+    bool updated;
+    bool deactiveted;
+    AchievementEntry const* achievement;
 };
 
 enum AchievementCriteriaDataType
@@ -49,7 +54,7 @@ enum AchievementCriteriaDataType
     ACHIEVEMENT_CRITERIA_DATA_TYPE_T_LEVEL             = 9, // minlevel                     minlevel of target
     ACHIEVEMENT_CRITERIA_DATA_TYPE_T_GENDER            = 10, // gender                       0=male; 1=female
     ACHIEVEMENT_CRITERIA_DATA_TYPE_SCRIPT              = 11, // scripted requirement
-    // REUSE
+    ACHIEVEMENT_CRITERIA_DATA_TYPE_MAP_DIFFICULTY      = 12, // used
     ACHIEVEMENT_CRITERIA_DATA_TYPE_MAP_PLAYER_COUNT    = 13, // count                        "with less than %u people in the zone"
     ACHIEVEMENT_CRITERIA_DATA_TYPE_T_TEAM              = 14, // team                         HORDE(67), ALLIANCE(469)
     ACHIEVEMENT_CRITERIA_DATA_TYPE_S_DRUNK             = 15, // drunken_state  0             (enum DrunkenState) of player
@@ -484,6 +489,11 @@ struct AchievementCriteriaData
             uint32 gender;
         } gender;
         // ACHIEVEMENT_CRITERIA_DATA_TYPE_SCRIPT            = 11 (no data)
+        // ACHIEVEMENT_CRITERIA_DATA_TYPE_MAP_DIFFICULTY    = 12
+        struct
+        {
+            uint32 id;
+        } difficulty;
         // ACHIEVEMENT_CRITERIA_DATA_TYPE_MAP_PLAYER_COUNT  = 13
         struct
         {
@@ -556,7 +566,7 @@ struct AchievementCriteriaDataSet
         Storage storage;
 };
 
-typedef ACE_Based::LockedMap<uint32, AchievementCriteriaDataSet> AchievementCriteriaDataMap;
+typedef std::map<uint32, AchievementCriteriaDataSet> AchievementCriteriaDataMap;
 
 struct AchievementReward
 {
@@ -568,7 +578,7 @@ struct AchievementReward
     std::string text;
 };
 
-typedef ACE_Based::LockedMap<uint32, AchievementReward> AchievementRewards;
+typedef std::map<uint32, AchievementReward> AchievementRewards;
 
 struct AchievementRewardLocale
 {
@@ -576,7 +586,7 @@ struct AchievementRewardLocale
     StringVector text;
 };
 
-typedef ACE_Based::LockedMap<uint32, AchievementRewardLocale> AchievementRewardLocales;
+typedef std::map<uint32, AchievementRewardLocale> AchievementRewardLocales;
 
 struct CompletedAchievementData
 {
@@ -587,8 +597,8 @@ struct CompletedAchievementData
     bool changed;
 };
 
-typedef ACE_Based::LockedMap<uint32, CriteriaProgress> CriteriaProgressMap;
-typedef ACE_Based::LockedMap<uint32, CompletedAchievementData> CompletedAchievementMap;
+typedef std::map<uint32, CriteriaProgress> CriteriaProgressMap;
+typedef std::map<uint32, CompletedAchievementData> CompletedAchievementMap;
 
 enum ProgressType
 {
@@ -630,7 +640,7 @@ class AchievementMgr
         uint32 GetAchievementPoints() const { return _achievementPoints; }
 
         CompletedAchievementMap const& GetCompletedAchivements() const { return m_completedAchievements; }
-        ACE_Thread_Mutex& GetCompletedAchievementLock() { return m_CompletedAchievementsLock; }
+        std::mutex& GetCompletedAchievementLock() { return m_CompletedAchievementsLock; }
 
         void SetCriteriaProgress(CriteriaEntry const* entry, uint64 changeValue, Player* referencePlayer, ProgressType ptype = PROGRESS_SET);
         void SetCompletedAchievementsIfNeeded(CriteriaEntry const* p_Criteria, Player* p_RefPlayer, bool p_LoginCheck = false);
@@ -659,12 +669,15 @@ class AchievementMgr
         T* _owner;
         CriteriaProgressMap m_criteriaProgress;
         CompletedAchievementMap m_completedAchievements;
-        mutable ACE_Thread_Mutex m_CompletedAchievementsLock;
-        typedef ACE_Based::LockedMap<uint32, uint32> TimedAchievementMap;
+        mutable std::mutex m_CompletedAchievementsLock;
+        typedef std::map<uint32, uint32> TimedAchievementMap;
         TimedAchievementMap m_timedAchievements;      // Criteria id/time left in MS
         uint32 _achievementPoints;
         bool m_NeedDBSync;
 };
+
+template<>
+bool AchievementMgr<Player>::HasAchieved(uint32 achievementId) const;
 
 struct AchievementCriteriaUpdateTask
 {
@@ -673,20 +686,25 @@ struct AchievementCriteriaUpdateTask
     std::function<void(uint64, uint64)> Task;
 };
 
-using LockedAchievementCriteriaTaskQueue   = ACE_Based::LockedQueue<AchievementCriteriaUpdateTask, ACE_Thread_Mutex>;
-using LockedPlayersAchievementCriteriaTask = ACE_Based::LockedMap<uint64, LockedAchievementCriteriaTaskQueue>;
+using LockedAchievementCriteriaTaskQueue   = std::queue<AchievementCriteriaUpdateTask>;
+using LockedPlayersAchievementCriteriaTask = std::map<uint64, LockedAchievementCriteriaTaskQueue>;
 
 using AchievementCriteriaTaskQueue   = std::queue<AchievementCriteriaUpdateTask>;
 using PlayersAchievementCriteriaTask = std::map<uint32, AchievementCriteriaTaskQueue>;
 
 class AchievementGlobalMgr
 {
-        friend class ACE_Singleton<AchievementGlobalMgr, ACE_Null_Mutex>;
         AchievementGlobalMgr() {}
         ~AchievementGlobalMgr() {}
 
     public:
         static char const* GetCriteriaTypeString(uint32 type);
+
+        static AchievementGlobalMgr* instance()
+        {
+            static AchievementGlobalMgr* instance = new AchievementGlobalMgr();
+            return instance;
+        }
 
         AchievementCriteriaEntryList const& GetAchievementCriteriaByType(AchievementCriteriaTypes type) const
         {
@@ -799,7 +817,7 @@ class AchievementGlobalMgr
 
         void AddCriteriaUpdateTask(AchievementCriteriaUpdateTask const& p_Task)
         {
-            m_LockedPlayersAchievementCriteriaTask[p_Task.PlayerGUID].add(p_Task);
+            m_LockedPlayersAchievementCriteriaTask[p_Task.PlayerGUID].push(p_Task);
         }
 
         PlayersAchievementCriteriaTask const& GetPlayersCriteriaTask() const
@@ -826,7 +844,7 @@ class AchievementGlobalMgr
         AchievementCriteriaTreeByCriteriaId m_AchievementCriteriaTreeByCriteriaId;
         AchievementEntryByCriteriaTree m_AchievementEntryByCriteriaTree;
         ModifierTreeEntryByTreeId m_ModifierTreeEntryByTreeId;
-        typedef ACE_Based::LockedMap<uint32 /*achievementId*/, uint32 /*instanceId*/> AllCompletedAchievements;
+        typedef std::map<uint32 /*achievementId*/, uint32 /*instanceId*/> AllCompletedAchievements;
         AllCompletedAchievements m_allCompletedAchievements;
         SubCriteriaTreeListById m_SubCriteriaTreeListById;
 
@@ -839,7 +857,7 @@ class AchievementGlobalMgr
         PlayersAchievementCriteriaTask       m_PlayersAchievementCriteriaTask;        ///< Before thread process, all task stored will be move here
 };
 
-#define sAchievementMgr ACE_Singleton<AchievementGlobalMgr, ACE_Null_Mutex>::instance()
+#define sAchievementMgr AchievementGlobalMgr::instance()
 
 class MapUpdater;
 class AchievementCriteriaUpdateRequest : public MapUpdaterTask

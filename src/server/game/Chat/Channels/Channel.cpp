@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <regex>
+#include <cwctype>
 
 #include "Channel.h"
 #include "Chat.h"
@@ -77,7 +78,7 @@ Channel::Channel(const std::string& name, uint32 channel_id, uint32 Team)
                         uint64 banned_guid = atol(*iter);
                         if (banned_guid)
                         {
-                            sLog->outDebug(LOG_FILTER_CHATSYS, "Channel(%s) loaded banned guid:" UI64FMTD "", name.c_str(), banned_guid);
+                            TC_LOG_DEBUG("chat.system", "Channel(%s) loaded banned guid:" UI64FMTD "", name.c_str(), banned_guid);
                             banned.insert(banned_guid);
                         }
                     }
@@ -89,7 +90,7 @@ Channel::Channel(const std::string& name, uint32 channel_id, uint32 Team)
                 stmt->setString(0, name);
                 stmt->setUInt32(1, m_Team);
                 CharacterDatabase.Execute(stmt);
-                sLog->outDebug(LOG_FILTER_CHATSYS, "Channel(%s) saved in database", name.c_str());
+                TC_LOG_DEBUG("chat.system", "Channel(%s) saved in database", name.c_str());
             }
 
             m_IsSaved = true;
@@ -130,7 +131,7 @@ void Channel::UpdateChannelInDB() const
         stmt->setUInt32(5, m_Team);
         CharacterDatabase.Execute(stmt);
 
-        sLog->outDebug(LOG_FILTER_CHATSYS, "Channel(%s) updated in database", m_name.c_str());
+        TC_LOG_DEBUG("chat.system", "Channel(%s) updated in database", m_name.c_str());
     }
 
 }
@@ -151,7 +152,7 @@ void Channel::CleanOldChannelsInDB()
         stmt->setUInt32(0, sWorld->getIntConfig(CONFIG_PRESERVE_CUSTOM_CHANNEL_DURATION) * DAY);
         CharacterDatabase.Execute(stmt);
 
-        sLog->outDebug(LOG_FILTER_CHATSYS, "Cleaned out unused custom chat channels.");
+        TC_LOG_DEBUG("chat.system", "Cleaned out unused custom chat channels.");
     }
 }
 
@@ -231,9 +232,9 @@ void Channel::Join(uint64 p, const char *pass)
         pinfo.LocaleFilter = 1 << (player->GetSession()->GetSessionDbLocaleIndex() + 1);
     }
 
-    m_Lock.acquire();
+    m_Players.GetLock().lock();
     m_Players[p] = pinfo;
-    m_Lock.release();
+    m_Players.GetLock().unlock();
 
     MakeYouJoined(&data);
     SendToOne(&data, p);
@@ -294,9 +295,9 @@ void Channel::Leave(uint64 p, bool send)
 
         bool changeowner = m_Players[p].IsOwner();
 
-        m_Lock.acquire();
+        m_Players.GetLock().lock();
         m_Players.erase(p);
-        m_Lock.release();
+        m_Players.GetLock().unlock();
 
         if (m_announce && (!player || !AccountMgr::IsModeratorAccount(player->GetSession()->GetSecurity()) || !sWorld->getBoolConfig(CONFIG_SILENTLY_GM_JOIN_TO_CHANNEL)))
         {
@@ -856,7 +857,7 @@ void Channel::SetOwner(uint64 guid, bool exclaim)
 
 void Channel::SendToAll(WorldPacket* data, uint64 p, uint64 p_SenderGUID)
 {
-    m_Lock.acquire();
+    m_Players.GetLock().lock();
     for (PlayerList::const_iterator i = m_Players.begin(); i != m_Players.end(); ++i)
     {
         Player* player = ObjectAccessor::FindPlayer(i->first);
@@ -876,12 +877,12 @@ void Channel::SendToAll(WorldPacket* data, uint64 p, uint64 p_SenderGUID)
 #endif /* CROSS */
         }
     }
-    m_Lock.release();
+    m_Players.GetLock().unlock();
 }
 
 void Channel::SendToAllButOne(WorldPacket* data, uint64 who)
 {
-    m_Lock.acquire();
+    m_Players.GetLock().lock();
     for (PlayerList::const_iterator i = m_Players.begin(); i != m_Players.end(); ++i)
     {
         if (i->first != who)
@@ -891,7 +892,7 @@ void Channel::SendToAllButOne(WorldPacket* data, uint64 who)
                 player->GetSession()->SendPacket(data);
         }
     }
-    m_Lock.release();
+    m_Players.GetLock().unlock();
 }
 
 void Channel::SendToOne(WorldPacket* data, uint64 who)

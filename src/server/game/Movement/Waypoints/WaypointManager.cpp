@@ -36,7 +36,7 @@ void WaypointMgr::Load()
 
     if (!result)
     {
-        sLog->outError(LOG_FILTER_SERVER_LOADING, ">> Loaded 0 waypoints. DB table `waypoint_data` is empty!");
+        TC_LOG_ERROR("server.loading", ">> Loaded 0 waypoints. DB table `waypoint_data` is empty!");
         return;
     }
 
@@ -55,8 +55,8 @@ void WaypointMgr::Load()
         float z = fields[4].GetFloat();
         float o = fields[5].GetFloat();
 
-        JadeCore::NormalizeMapCoord(x);
-        JadeCore::NormalizeMapCoord(y);
+        Trinity::NormalizeMapCoord(x);
+        Trinity::NormalizeMapCoord(y);
 
         wp->id = fields[1].GetUInt32();
         wp->x = x;
@@ -67,7 +67,7 @@ void WaypointMgr::Load()
 
         if (wp->move_type >= WAYPOINT_MOVE_TYPE_MAX)
         {
-            sLog->outError(LOG_FILTER_SQL, "Waypoint %u in waypoint_data has invalid move_type, ignoring", wp->id);
+            TC_LOG_ERROR("sql.sql", "Waypoint %u in waypoint_data has invalid move_type, ignoring", wp->id);
             delete wp;
             continue;
         }
@@ -81,7 +81,7 @@ void WaypointMgr::Load()
     }
     while (result->NextRow());
 
-    sLog->outInfo(LOG_FILTER_SERVER_LOADING, ">> Loaded %u waypoints in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
+    TC_LOG_INFO("server.loading", ">> Loaded %u waypoints in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
 }
 
 void WaypointMgr::ReloadPath(uint32 id)
@@ -116,8 +116,8 @@ void WaypointMgr::ReloadPath(uint32 id)
         float z = fields[3].GetFloat();
         float o = fields[4].GetFloat();
 
-        JadeCore::NormalizeMapCoord(x);
-        JadeCore::NormalizeMapCoord(y);
+        Trinity::NormalizeMapCoord(x);
+        Trinity::NormalizeMapCoord(y);
 
         wp->id = fields[0].GetUInt32();
         wp->x = x;
@@ -128,7 +128,7 @@ void WaypointMgr::ReloadPath(uint32 id)
 
         if (wp->move_type >= WAYPOINT_MOVE_TYPE_MAX)
         {
-            sLog->outError(LOG_FILTER_SQL, "Waypoint %u in waypoint_data has invalid move_type, ignoring", wp->id);
+            TC_LOG_ERROR("sql.sql", "Waypoint %u in waypoint_data has invalid move_type, ignoring", wp->id);
             delete wp;
             continue;
         }

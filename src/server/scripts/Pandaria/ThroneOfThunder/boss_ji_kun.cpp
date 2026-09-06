@@ -576,17 +576,8 @@ class boss_ji_kun : public CreatureScript
                             if (l_DungeonID != eMisc::LFRToTSecondPart)
                                 continue;
 
-                            if (!me || l_Player->IsAtGroupRewardDistance(me))
-                                sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
-
                             if (l_Assigned)
                                 continue;
-
-                            if (Group* l_Group = l_Player->GetGroup())
-                            {
-                                l_Assigned = true;
-                                sLFGMgr->AutomaticLootAssignation(me, l_Group);
-                            }
                         }
                     }
                 }
@@ -798,7 +789,7 @@ class mob_fall_catcher : public CreatureScript
         {
             mob_fall_catcherAI(Creature* p_Creature) : ScriptedAI(p_Creature), m_Vehicle(p_Creature->GetVehicleKit())
             {
-                ASSERT(m_Vehicle)
+                ASSERT(m_Vehicle);
                 m_Instance = p_Creature->GetInstanceScript();
             }
 

@@ -23,13 +23,13 @@ int RootHandler_Insert(TRootHandler * pRootHandler, const char * szFileName, LPB
     return pRootHandler->Insert(pRootHandler, szFileName, pbEncodingKey);
 }
 
-LPBYTE RootHandler_Search(TRootHandler * pRootHandler, struct _TCascSearch * pSearch, PDWORD PtrFileSize, PDWORD PtrLocaleFlags)
+LPBYTE RootHandler_Search(TRootHandler * pRootHandler, struct _TCascSearch * pSearch, PDWORD PtrFileSize, PDWORD PtrLocaleFlags, PDWORD PtrFileDataId)
 {
     // Check if the root structure is valid at all
     if(pRootHandler == NULL)
         return NULL;
-    
-    return pRootHandler->Search(pRootHandler, pSearch, PtrFileSize, PtrLocaleFlags);
+
+    return pRootHandler->Search(pRootHandler, pSearch, PtrFileSize, PtrLocaleFlags, PtrFileDataId);
 }
 
 void RootHandler_EndSearch(TRootHandler * pRootHandler, struct _TCascSearch * pSearch)
@@ -46,7 +46,7 @@ LPBYTE RootHandler_GetKey(TRootHandler * pRootHandler, const char * szFileName)
     // Check if the root structure is valid at all
     if(pRootHandler == NULL)
         return NULL;
-    
+
     return pRootHandler->GetKey(pRootHandler, szFileName);
 }
 
@@ -59,7 +59,7 @@ void RootHandler_Dump(TCascStorage * hs, LPBYTE pbRootHandler, DWORD cbRootHandl
     {
         // Create the dump file
         dc = CreateDumpContext(hs, szNameFormat);
-        if(dc != NULL)                      
+        if(dc != NULL)
         {
             // Dump the content and close the file
             hs->pRootHandler->Dump(hs, dc, pbRootHandler, cbRootHandler, szListFile, nDumpLevel);
@@ -76,3 +76,13 @@ void RootHandler_Close(TRootHandler * pRootHandler)
         pRootHandler->Close(pRootHandler);
     }
 }
+
+DWORD RootHandler_GetFileId(TRootHandler * pRootHandler, const char * szFileName)
+{
+    // Check if the root structure is valid at all
+    if(pRootHandler == NULL)
+        return NULL;
+
+    return pRootHandler->GetFileId(pRootHandler, szFileName);
+}
+

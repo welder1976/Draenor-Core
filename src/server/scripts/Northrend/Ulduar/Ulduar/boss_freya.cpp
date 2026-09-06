@@ -409,7 +409,7 @@ class boss_freya : public CreatureScript
                 std::map<uint32, std::vector<uint32>> summonSpell =
                 {
                     {
-                        Difficulty::Difficulty10N,
+                        Difficulty::RAID_DIFFICULTY_25MAN_NORMAL,
                         {
                             62957,
                             62955,
@@ -418,7 +418,7 @@ class boss_freya : public CreatureScript
                         }
                     },
                     {
-                        Difficulty::Difficulty25N,
+                        Difficulty::RAID_DIFFICULTY_25MAN_NORMAL,
                         {
                             62958,
                             62956,
@@ -573,8 +573,8 @@ class boss_freya : public CreatureScript
                         {
                             // On every player
                             std::list<Player*> PlayerList;
-                            JadeCore::AnyPlayerInObjectRangeCheck checker(me, 50.0f);
-                            JadeCore::PlayerListSearcher<JadeCore::AnyPlayerInObjectRangeCheck> searcher(me, PlayerList, checker);
+                            Trinity::AnyPlayerInObjectRangeCheck checker(me, 50.0f);
+                            Trinity::PlayerListSearcher<Trinity::AnyPlayerInObjectRangeCheck> searcher(me, PlayerList, checker);
                             me->VisitNearbyWorldObject(50.0f, searcher);
                             for (std::list<Player*>::const_iterator itr = PlayerList.begin(); itr != PlayerList.end(); ++itr)
                                 (*itr)->CastSpell(*itr, SPELL_SUMMON_NATURE_BOMB, true);

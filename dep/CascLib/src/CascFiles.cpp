@@ -41,7 +41,7 @@ static const TBuildFileInfo BuildTypes[] =
     {NULL, CascBuildNone}
 };
 
-static const TCHAR * DataDirs[] = 
+static const TCHAR * DataDirs[] =
 {
     _T("SC2Data"),                                  // Starcraft II (Legacy of the Void) build 38749
     _T("Data\\Casc"),                               // Overwatch
@@ -381,7 +381,7 @@ static int LoadMultipleBlobs(PQUERY_KEY pBlob, const char * szLineBegin, const c
     size_t nLength = (szLineEnd - szLineBegin);
 
     // We expect each blob to have length of the encoding key and one space between
-    if(nLength > (dwBlobCount * MD5_STRING_SIZE) + ((dwBlobCount - 1) * sizeof(char))) 
+    if(nLength > (dwBlobCount * MD5_STRING_SIZE) + ((dwBlobCount - 1) * sizeof(char)))
         return ERROR_INVALID_PARAMETER;
 
     // Allocate the blob buffer
@@ -401,7 +401,7 @@ static int LoadMultipleBlobs(PQUERY_KEY pBlob, const char * szLineBegin, const c
 
 static int LoadSingleBlob(PQUERY_KEY pBlob, const char * szLineBegin, const char * szLineEnd)
 {
-    return LoadMultipleBlobs(pBlob, szLineBegin, szLineEnd, 1); 
+    return LoadMultipleBlobs(pBlob, szLineBegin, szLineEnd, 1);
 }
 
 static int GetGameType(TCascStorage * hs, const char * szVarBegin, const char * szLineEnd)
@@ -409,7 +409,7 @@ static int GetGameType(TCascStorage * hs, const char * szVarBegin, const char * 
     // Go through all games that we support
     for(size_t i = 0; GameIds[i].szGameInfo != NULL; i++)
     {
-        // Check the length of the variable 
+        // Check the length of the variable
         if((size_t)(szLineEnd - szVarBegin) == GameIds[i].cchGameInfo)
         {
             // Check the string
@@ -475,7 +475,7 @@ static int GetDefaultLocaleMask(TCascStorage * hs, PQUERY_KEY pTagsString)
         // Get the next part
         if(szNext == NULL)
             break;
-        
+
         // Skip spaces
         while(szNext < szTagEnd && szNext[0] == ' ')
             szNext++;
@@ -522,14 +522,16 @@ static int ParseFile_BuildInfo(TCascStorage * hs, void * pvListFile)
     QUERY_KEY TagString = {NULL, 0};
     QUERY_KEY CdnHost = {NULL, 0};
     QUERY_KEY CdnPath = {NULL, 0};
-    char szOneLine1[0x200];
-    char szOneLine2[0x200];
+    const char * szLinePtr1;
+    const char * szLineEnd1;
+    const char * szLinePtr2;
+    const char * szLineEnd2;
     size_t nLength1;
     size_t nLength2;
     int nError = ERROR_BAD_FORMAT;
 
     // Extract the first line, cotaining the headers
-    nLength1 = ListFile_GetNextLine(pvListFile, szOneLine1, _maxchars(szOneLine1));
+    nLength1 = ListFile_GetNextLine(pvListFile, &szLinePtr1, &szLineEnd1);
     if(nLength1 == 0)
         return ERROR_BAD_FORMAT;
 
@@ -537,16 +539,10 @@ static int ParseFile_BuildInfo(TCascStorage * hs, void * pvListFile)
     // with "Active" set to 1
     for(;;)
     {
-        const char * szLinePtr1 = szOneLine1;
-        const char * szLineEnd1 = szOneLine1 + nLength1;
-        const char * szLinePtr2 = szOneLine2;
-        const char * szLineEnd2;
-
         // Read the next line
-        nLength2 = ListFile_GetNextLine(pvListFile, szOneLine2, _maxchars(szOneLine2));
+        nLength2 = ListFile_GetNextLine(pvListFile, &szLinePtr2, &szLineEnd2);
         if(nLength2 == 0)
             break;
-        szLineEnd2 = szLinePtr2 + nLength2;
 
         // Parse all variables
         while(szLinePtr1 < szLineEnd1)
@@ -586,6 +582,9 @@ static int ParseFile_BuildInfo(TCascStorage * hs, void * pvListFile)
         FreeCascBlob(&CdnHost);
         FreeCascBlob(&CdnPath);
         FreeCascBlob(&TagString);
+
+        // Rewind column names pointer back to start of line
+        szLinePtr1 = szLineEnd1 - nLength1;
     }
 
     // All four must be present
@@ -696,7 +695,7 @@ static int LoadCdnConfigFile(TCascStorage * hs, void * pvListFile)
         szVarBegin = CheckLineVariable(szLineBegin, szLineEnd, "patch-archive-group");
         if(szVarBegin != NULL)
         {
-            LoadSingleBlob(&hs->PatchArchivesKey, szVarBegin, szLineEnd);
+            LoadSingleBlob(&hs->PatchArchivesGroup, szVarBegin, szLineEnd);
             continue;
         }
 
@@ -848,6 +847,7 @@ int LoadBuildInfo(TCascStorage * hs)
     if(nError == ERROR_SUCCESS)
     {
         pvListFile = ListFile_OpenExternal(hs->szBuildFile);
+        printf("LoadBuildInfo: open '%s' -> %s\n", hs->szBuildFile, (pvListFile != NULL) ? "OK" : "FAILED");
         if(pvListFile != NULL)
         {
             // Parse the info file
@@ -862,15 +862,14 @@ int LoadBuildInfo(TCascStorage * hs)
     // proceed with loading the CDN config file and CDN build file
     if(nError == ERROR_SUCCESS)
     {
-        // Load the configuration file
+        // Load the configuration file. Note that we don't
+        // need it for anything, really, so we don't care if it fails
         pvListFile = FetchAndVerifyConfigFile(hs, &hs->CdnConfigKey);
         if(pvListFile != NULL)
         {
             nError = LoadCdnConfigFile(hs, pvListFile);
             ListFile_Free(pvListFile);
         }
-        else
-            nError = ERROR_FILE_NOT_FOUND;
     }
 
     // Load the build file
@@ -903,9 +902,9 @@ int LoadBuildInfo(TCascStorage * hs)
     return nError;
 }
 
-// Checks whether there is a ".agent.db". If yes, the function
-// sets "szRootPath" and "szDataPath" in the storage structure
-// and returns ERROR_SUCCESS
+// Checks whether there is a ".build.info" or ".build.db".
+// If yes, the function sets "szRootPath" and "szDataPath"
+// in the storage structure and returns ERROR_SUCCESS
 int CheckGameDirectory(TCascStorage * hs, TCHAR * szDirectory)
 {
     TFileStream * pStream;
@@ -920,7 +919,8 @@ int CheckGameDirectory(TCascStorage * hs, TCHAR * szDirectory)
         if(szBuildFile != NULL)
         {
             // Attempt to open the file
-            pStream = FileStream_OpenFile(szBuildFile, 0);
+            pStream = FileStream_OpenFile(szBuildFile, STREAM_FLAG_READ_ONLY);
+            printf("CheckGameDirectory: '%s' -> %s\n", szBuildFile, (pStream != NULL) ? "OPENED" : "not found");
             if(pStream != NULL)
             {
                 // Free the stream
@@ -928,6 +928,7 @@ int CheckGameDirectory(TCascStorage * hs, TCHAR * szDirectory)
 
                 // Check for the data directory
                 nError = CheckDataDirectory(hs, szDirectory);
+                printf("CheckDataDirectory('%s') -> 0x%X\n", szDirectory, nError);
                 if(nError == ERROR_SUCCESS)
                 {
                     hs->szBuildFile = szBuildFile;
@@ -935,7 +936,7 @@ int CheckGameDirectory(TCascStorage * hs, TCHAR * szDirectory)
                     return ERROR_SUCCESS;
                 }
             }
-             
+
             CASC_FREE(szBuildFile);
         }
     }
@@ -943,15 +944,48 @@ int CheckGameDirectory(TCascStorage * hs, TCHAR * szDirectory)
     return nError;
 }
 
-// Parses single line from Overwatch.
-// The line structure is: "#MD5|CHUNK_ID|FILENAME|INSTALLPATH"
+//-----------------------------------------------------------------------------
+// Helpers for a config files that have multiple variables separated by "|"
+// The line structure is (Overwatch 24919): "#MD5|CHUNK_ID|FILENAME|INSTALLPATH"
+// The line structure is (Overwatch 27759): "#MD5|CHUNK_ID|PRIORITY|MPRIORITY|FILENAME|INSTALLPATH"
 // The line has all preceding spaces removed
-int ParseRootFileLine(const char * szLinePtr, const char * szLineEnd, PQUERY_KEY PtrEncodingKey, char * szFileName, size_t nMaxChars)
+
+// Retrieves the index of a variable from the initial line
+int GetRootVariableIndex(const char * szLinePtr, const char * szLineEnd, const char * szVariableName, int * PtrIndex)
 {
-    size_t nLength;
+    size_t nLength = strlen(szVariableName);
+    int nIndex = 0;
+    
+    while(szLinePtr < szLineEnd)
+    {
+        // Check the variable there
+        if(!_strnicmp(szLinePtr, szVariableName, nLength))
+        {
+            // Does the length match?
+            if(szLinePtr[nLength] == '|' || szLinePtr[nLength] == '0')
+            {
+                PtrIndex[0] = nIndex;
+                return ERROR_SUCCESS;
+            }
+        }
+
+        // Get the next variable
+        szLinePtr = SkipInfoVariable(szLinePtr, szLineEnd);
+        if(szLinePtr == NULL)
+            break;
+        nIndex++;
+    }
+
+    return ERROR_BAD_FORMAT;
+}
+
+// Parses single line from Overwatch.
+int ParseRootFileLine(const char * szLinePtr, const char * szLineEnd, int nFileNameIndex, PQUERY_KEY PtrEncodingKey, char * szFileName, size_t nMaxChars)
+{
+    int nIndex = 0;
     int nError;
 
-    // Check the MD5 (aka encoding key)
+    // Extract the MD5 (aka encoding key)
     if(szLinePtr[MD5_STRING_SIZE] != '|')
         return ERROR_BAD_FORMAT;
 
@@ -961,21 +995,25 @@ int ParseRootFileLine(const char * szLinePtr, const char * szLineEnd, PQUERY_KEY
     if(nError != ERROR_SUCCESS)
         return nError;
 
-    // Skip the MD5
-    szLinePtr += MD5_STRING_SIZE+1;
+    // Skip the variable
+    szLinePtr += MD5_STRING_SIZE + 1;
+    nIndex = 1;
 
-    // Skip the chunk ID
-    szLinePtr = SkipInfoVariable(szLinePtr, szLineEnd);
+    // Skip the variables until we find the file name
+    while(szLinePtr < szLineEnd && nIndex < nFileNameIndex)
+    {
+        if(szLinePtr[0] == '|')
+            nIndex++;
+        szLinePtr++;
+    }
 
-    // Get the archived file name
-    szLineEnd = SkipInfoVariable(szLinePtr, szLineEnd);
-    nLength = (size_t)(szLineEnd - szLinePtr - 1);
+    // Extract the file name
+    while(szLinePtr < szLineEnd && szLinePtr[0] != '|' && nMaxChars > 1)
+    {
+        *szFileName++ = *szLinePtr++;
+        nMaxChars--;
+    }
 
-    // Get the file name
-    if(nLength > nMaxChars)
-        return ERROR_INSUFFICIENT_BUFFER;
-
-    memcpy(szFileName, szLinePtr, nLength);
-    szFileName[nLength] = 0;
+    *szFileName = 0;
     return ERROR_SUCCESS;
 }

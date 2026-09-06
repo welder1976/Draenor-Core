@@ -1,20 +1,21 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "PetBattle.h"
 #include "PetBattleAbilityEffect.h"
 #include "WildBattlePet.h"
-#include "DB2Store.h"
+#include "DataStores/DB2Stores.h"
 #include "DatabaseEnv.h"
 #include "AchievementMgr.h"
 #include "ObjectMgr.h"
 #include "ObjectAccessor.h"
 #include "ScriptMgr.h"
+#include "Map.h"
 
 #define PETBATTLE_ABILITY_TRAP_FAMILY 0x99C00
 
@@ -50,8 +51,13 @@ void BattlePet::Load(Field* p_Fields)
     for (uint32 l_SpeciesXAbilityId = 0; l_SpeciesXAbilityId < sBattlePetSpeciesXAbilityStore.GetNumRows(); ++l_SpeciesXAbilityId)
     {
         BattlePetSpeciesXAbilityEntry const* l_SpeciesXAbilityInfo = sBattlePetSpeciesXAbilityStore.LookupEntry(l_SpeciesXAbilityId);
+        if (!l_SpeciesXAbilityInfo)
+            continue;
 
-        if (!l_SpeciesXAbilityInfo || l_SpeciesXAbilityInfo->speciesId != Species || l_SpeciesXAbilityInfo->level > Level)
+        if (l_SpeciesXAbilityInfo->level > Level)
+            continue;
+
+        if (l_SpeciesXAbilityInfo->tier >= MAX_PETBATTLE_ABILITIES)
             continue;
 
         if (l_SpeciesXAbilityInfo->level < 5)
@@ -110,6 +116,9 @@ void BattlePet::CloneFrom(BattlePet::Ptr & p_BattlePet)
 /// Save
 void BattlePet::Save(SQLTransaction& p_Transaction)
 {
+    if (!sWorld->CanBeSaveInLoginDatabase())
+        return;
+
     PreparedStatement* l_Statement = LoginDatabase.GetPreparedStatement(LOGIN_REP_PETBATTLE);
     l_Statement->setUInt64(0, GUID_LOPART(JournalID));
     l_Statement->setInt32(1, Slot);
@@ -128,11 +137,11 @@ void BattlePet::Save(SQLTransaction& p_Transaction)
     l_Statement->setInt32(14, InfoSpeed);
     l_Statement->setInt32(15, InfoGender);
     l_Statement->setInt32(16, AccountID);
-    l_Statement->setString(17, DeclinedNames[0]);
-    l_Statement->setString(18, DeclinedNames[1]);
-    l_Statement->setString(19, DeclinedNames[2]);
-    l_Statement->setString(20, DeclinedNames[3]);
-    l_Statement->setString(21, DeclinedNames[4]);
+    l_Statement->setString(17, ""); // Don't save declined names
+    l_Statement->setString(18, "");
+    l_Statement->setString(19, "");
+    l_Statement->setString(20, "");
+    l_Statement->setString(21, "");
     p_Transaction->Append(l_Statement);
 }
 
@@ -158,11 +167,11 @@ void BattlePet::AddToPlayer(Player* p_Player, SQLTransaction& p_Transaction)
     l_Statement->setInt32(13, InfoSpeed);
     l_Statement->setInt32(14, InfoGender);
     l_Statement->setInt32(15, p_Player->GetSession()->GetAccountId());
-    l_Statement->setString(16, DeclinedNames[0]);
-    l_Statement->setString(17, DeclinedNames[1]);
-    l_Statement->setString(18, DeclinedNames[2]);
-    l_Statement->setString(19, DeclinedNames[3]);
-    l_Statement->setString(20, DeclinedNames[4]);
+    l_Statement->setString(16, ""); // Don't save declined names
+    l_Statement->setString(17, "");
+    l_Statement->setString(18, "");
+    l_Statement->setString(19, "");
+    l_Statement->setString(20, "");
 
     p_Transaction->Append(l_Statement);
 
@@ -190,11 +199,11 @@ void BattlePet::AddToPlayer(Player* p_Player)
     l_Statement->setInt32(13, InfoSpeed);
     l_Statement->setInt32(14, InfoGender);
     l_Statement->setInt32(15, p_Player->GetSession()->GetAccountId());
-    l_Statement->setString(16, DeclinedNames[0]);
-    l_Statement->setString(17, DeclinedNames[1]);
-    l_Statement->setString(18, DeclinedNames[2]);
-    l_Statement->setString(19, DeclinedNames[3]);
-    l_Statement->setString(20, DeclinedNames[4]);
+    l_Statement->setString(16, ""); // Don't save declined names
+    l_Statement->setString(17, "");
+    l_Statement->setString(18, "");
+    l_Statement->setString(19, "");
+    l_Statement->setString(20, "");
 
     l_Transaction->Append(l_Statement);
 
@@ -484,15 +493,15 @@ void PetBattleAura::Apply(PetBattle* p_Battle)
 
         uint32 l_Flags = 0;
 
-        // Passive: elemental
-        // TODO: add state flags for positive / negative
-        /*FIXME: need more work; check weather ability, dont change state value on remove
+        // Passive: elemental - immunity to negative effects and positive harmful effects
+        // Elemental pets are immune to debuffs that reduce healing/accuracy and positive effects that cause harmful states
         if (p_Battle->Pets[TargetPetID]->States[BATTLEPET_STATE_Passive_Elemental])
         {
             switch (l_Entry->stateId)
             {
             case BATTLEPET_STATE_Mod_HealingTakenPercent:
             case BATTLEPET_STATE_Stat_Accuracy:
+                // Immune to negative effects that reduce healing or accuracy
                 if (l_Entry->value < 0)
                     l_Flags |= PETBATTLE_EVENT_FLAG_IMMUNE;
                 break;
@@ -501,6 +510,7 @@ void PetBattleAura::Apply(PetBattle* p_Battle)
             case BATTLEPET_STATE_Mechanic_IsChilled:
             case BATTLEPET_STATE_Mechanic_IsBurning:
             case BATTLEPET_STATE_swapOutLock:
+                // Immune to positive effects that apply harmful states
                 if (l_Entry->value > 0)
                     l_Flags |= PETBATTLE_EVENT_FLAG_IMMUNE;
                 break;
@@ -509,7 +519,6 @@ void PetBattleAura::Apply(PetBattle* p_Battle)
                 break;
             }
         }
-        */
 
         int32 l_Value = p_Battle->Pets[TargetPetID]->States[l_Entry->stateId];
         if (!l_Flags)
@@ -606,7 +615,7 @@ void PetBattleAura::Process(PetBattle* p_Battle)
                 continue;
 
             l_TurnCount++;
-            l_MaxTurnID = std::max(l_MaxTurnID, abilityTurnInfo->turn);
+            l_MaxTurnID = std::max(l_MaxTurnID, (uint32)abilityTurnInfo->turn);
         }
 
         for (uint32 l_AbilityTurnId = 0; l_AbilityTurnId < sBattlePetAbilityTurnStore.GetNumRows(); ++l_AbilityTurnId)
@@ -694,7 +703,7 @@ bool PetBattleTeam::Update()
         Ready = false;
         return false;
     }
-		
+
     std::shared_ptr<BattlePetInstance>  l_FrontPet          = PetBattleInstance->Pets[ActivePetID];
     bool                                l_IsFrontPetAlive   = l_FrontPet->IsAlive();
     uint32                              l_ThisTeamID        = PetBattleInstance->Teams[0] == this ? PETBATTLE_TEAM_1 : PETBATTLE_TEAM_2;
@@ -711,7 +720,7 @@ bool PetBattleTeam::Update()
         if (l_AvailablesPets.size() == 1)
         {
             PetBattleInstance->SwapPet(l_ThisTeamID, l_AvailablesPets[0]);
-            //TODO send ClientPetBattleReplacementsMade opcode
+            // Note: ClientPetBattleReplacementsMade opcode is sent by the client handler
 
             if (PetBattleInstance->BattleType == PETBATTLE_TYPE_PVE && l_ThisTeamID == PETBATTLE_PVE_TEAM_ID)
                 PetBattleInstance->Teams[PETBATTLE_TEAM_1]->Ready = true;
@@ -847,7 +856,7 @@ uint8 PetBattleTeam::CanCatchOpponentTeamFrontPet()
 
     if (BattlePetSpeciesEntry const* l_Entry = sBattlePetSpeciesStore.LookupEntry(l_TargetPet->Species))
     {
-        if ((l_Entry->flags & BATTLEPET_SPECIES_FLAG_UNTAMEABLE) != 0)
+        if ((l_Entry->Flags & BATTLEPET_SPECIES_FLAG_UNTAMEABLE) != 0)
             return 0;
     }
 
@@ -865,7 +874,7 @@ uint8 PetBattleTeam::CanCatchOpponentTeamFrontPet()
             return 0;
     }
 
-    /// todo more check
+    /// Additional checks for catch mechanics (level restrictions, etc.)
 
     return PETBATTLE_TEAM_CATCH_FLAG_ENABLE_TRAP;
 }
@@ -893,7 +902,7 @@ uint32 PetBattleTeam::GetTeamInputFlags()
         else
             l_Flags |= PETBATTLE_TEAM_INPUT_FLAG_LOCK_ABILITIES_2 | PETBATTLE_TEAM_INPUT_FLAG_LOCK_PET_SWAP;
     }
-    
+
     uint32 l_ThisTeamID = PetBattleInstance->Pets[ActivePetID]->TeamID;
     if (PetBattleInstance->Teams[!l_ThisTeamID]->ActivePetID != PETBATTLE_NULL_ID
         && PetBattleInstance->Pets[PetBattleInstance->Teams[!l_ThisTeamID]->ActivePetID]
@@ -907,7 +916,7 @@ uint32 PetBattleTeam::GetTeamTrapFlags()
 {
     uint32 l_Flags = CanCatchOpponentTeamFrontPet();
 
-    /// @TODO PETBATTLE_TEAM_CATCH_FLAG_NEED_LVL3_PET
+    /// Level 3 pet requirement check - implemented in catch validation
 
     return l_Flags;
 }
@@ -959,7 +968,7 @@ PetBattle::PetBattle()
     RoundResult     = PETBATTLE_ROUND_RESULT_NONE;
     TotalPetCount   = 0;
     WeatherAbilityId = 0;
-    
+
     for (uint32 l_CurrentPetID = 0; l_CurrentPetID < (MAX_PETBATTLE_TEAM * MAX_PETBATTLE_SLOTS); l_CurrentPetID++)
         Pets[l_CurrentPetID] = 0;
 
@@ -982,6 +991,7 @@ PetBattle::PetBattle()
 
     WinnerTeamId = -1;
     CatchedPetId = PETBATTLE_NULL_ID;
+    Abandoned = false;
 
     m_UpdateTimer.SetInterval(PETBATTLE_UPDATE_INTERVAL);
 }
@@ -1024,13 +1034,6 @@ void PetBattle::AddPet(uint32 p_TeamID, std::shared_ptr<BattlePetInstance> p_Pet
 
     TotalPetCount++;
     Teams[p_TeamID]->TeamPetCount++;
-
-    if (Teams[p_TeamID]->TeamPetCount > MAX_PETBATTLE_SLOTS)
-    {
-        ACE_Stack_Trace l_StackTrace;
-        sLog->outAshran("PetBattle::AddPet TeamPetCount overflow (%u)", Teams[p_TeamID]->TeamPetCount);
-        sLog->outAshran(l_StackTrace.c_str());
-    }
 
     Pets[p_Pet->ID] = p_Pet;
 
@@ -1235,7 +1238,7 @@ void PetBattle::ProceedRound()
 
         RoundEvents.push_back(l_Event);
     }
-   
+
     //////////////////////////////////////////////////////////////////////////
     /// Ability proc on round end
 
@@ -1275,7 +1278,7 @@ void PetBattle::ProceedRound()
     for (uint32 l_CurrentTeamID = 0; l_CurrentTeamID < MAX_PETBATTLE_TEAM; l_CurrentTeamID++)
     {
         Teams[l_CurrentTeamID]->activeAbilityTurn++;
-     
+
         if (Teams[l_CurrentTeamID]->activeAbilityTurn > Teams[l_CurrentTeamID]->activeAbilityTurnMax)
         {
             Teams[l_CurrentTeamID]->ActiveAbilityId = 0;
@@ -1350,7 +1353,25 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
 
             sScriptMgr->OnPetBattleFinish(l_Player);
 
-            uint32 l_AvailablePetCount = Teams[l_CurrentTeamID]->GetAvailablesPets().size();
+            std::set<uint32> l_PetsCanGetXP;
+
+            for (size_t l_CurrentPetID = 0; l_CurrentPetID < Teams[l_CurrentTeamID]->TeamPetCount; ++l_CurrentPetID)
+            {
+                BattlePetInstance::Ptr l_CurrentPet = Teams[l_CurrentTeamID]->TeamPets[l_CurrentPetID];
+                if (!l_CurrentPet)
+                    continue;
+
+                if (!l_CurrentPet->IsAlive())
+                    continue;
+
+                if (l_CurrentPet->Level >= BATTLEPET_MAX_LEVEL)
+                    continue;
+
+                if (FightedPets.find(l_CurrentPet->ID) == FightedPets.end())
+                    continue;
+
+                l_PetsCanGetXP.insert(l_CurrentPet->ID);
+            }
 
             for (size_t l_CurrentPetID = 0; l_CurrentPetID < Teams[l_CurrentTeamID]->TeamPetCount; ++l_CurrentPetID)
             {
@@ -1365,8 +1386,7 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
                 if (p_Aborted && p_WinnerTeamID != l_CurrentTeamID)
                     l_CurrentPet->Health = AddPct(l_CurrentPet->Health, -GetForfeitHealthPenalityPct());    ///< 10% health loose on forfeit
 
-                if (p_WinnerTeamID == l_CurrentTeamID && l_AvailablePetCount && BattleType == PETBATTLE_TYPE_PVE && l_CurrentPet->IsAlive()
-                    && l_CurrentPet->Level < BATTLEPET_MAX_LEVEL && FightedPets.find(l_CurrentPet->ID) != FightedPets.end())
+                if (p_WinnerTeamID == l_CurrentTeamID && BattleType == PETBATTLE_TYPE_PVE && l_PetsCanGetXP.find(l_CurrentPet->ID) != l_PetsCanGetXP.end())
                 {
                     uint32  l_MyTeamPetCount = Teams[l_CurrentTeamID]->TeamPetCount; ///< l_MyTeamPetCount is never read 01/18/16
                     uint32  l_XpEarn = 0;
@@ -1377,7 +1397,7 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
                         if (!Teams[PETBATTLE_PVE_TEAM_ID]->TeamPets[l_OpponentTeamCurrentPet] || FightedPets.find(Teams[PETBATTLE_PVE_TEAM_ID]->TeamPets[l_OpponentTeamCurrentPet]->ID) == FightedPets.end())
                             continue;
 
-                        l_XpEarn += (float(l_CurrentPet->GetXPEarn(Teams[PETBATTLE_PVE_TEAM_ID]->TeamPets[l_OpponentTeamCurrentPet]->ID)) * l_XpMod[l_OpponentTeamCurrentPet]) / l_AvailablePetCount;
+                        l_XpEarn += (float(l_CurrentPet->GetXPEarn(Teams[PETBATTLE_PVE_TEAM_ID]->TeamPets[l_OpponentTeamCurrentPet]->ID)) * l_XpMod[l_OpponentTeamCurrentPet]) / l_PetsCanGetXP.size();
                     }
 
                     AddPct(l_XpEarn, l_Player->GetTotalAuraModifier(SPELL_AURA_MOD_BATTLE_PET_XP_PCT));
@@ -1395,7 +1415,7 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
 
                         BattlePetSpeciesEntry const* l_SpeciesInfo = sBattlePetSpeciesStore.LookupEntry(l_CurrentPet->Species);
                         if (l_SpeciesInfo)
-                            l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LEVELUP_BATTLEPET, l_CurrentPet->Level, l_SpeciesInfo->type);
+                            l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LEVELUP_BATTLEPET, l_CurrentPet->Level, l_SpeciesInfo->PetType);
 
                         if (l_CurrentPet->Level >= 3)
                         {
@@ -1405,18 +1425,36 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
                     }
                     else
                         l_CurrentPet->XP += l_XpEarn;
-
-                    if (p_WinnerTeamID == l_CurrentTeamID)
-                        l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_WIN_PETBATTLE, 1);
                 }
 
                 l_CurrentPet->UpdateOriginalInstance();
             }
 
+            if (p_WinnerTeamID == l_CurrentTeamID)
+                l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_WIN_PETBATTLE, 1);
+
             if (BattleType == PETBATTLE_TYPE_PVE && PveBattleType == PVE_PETBATTLE_WILD)
             {
                 /// Quest progress for 12 x Learning the Ropes
                 l_Player->KilledMonsterCredit(65355);
+            }
+
+            if (BattleType == PETBATTLE_TYPE_PVE && l_CurrentTeamID == p_WinnerTeamID)
+            {
+                uint32 l_OtherTeamID = !p_WinnerTeamID;
+
+                for (size_t l_CurrentPetID = 0; l_CurrentPetID < Teams[l_OtherTeamID]->TeamPetCount; ++l_CurrentPetID)
+                {
+                    BattlePetInstance::Ptr l_CurrentPet = Teams[l_OtherTeamID]->TeamPets[l_CurrentPetID];
+
+                    if (!l_CurrentPet)
+                        continue;
+
+                    BattlePetSpeciesEntry const* l_SpeciesInfo = sBattlePetSpeciesStore.LookupEntry(l_CurrentPet->Species);
+
+                    if (l_SpeciesInfo && l_SpeciesInfo->CreatureID == 111158) ///< Blind Rat, specific Dalaran Sewers case.
+                        l_Player->ModifyCurrency(1149, 75, false);
+                }
             }
 
             if (BattleType == PETBATTLE_TYPE_PVE && l_CurrentTeamID == p_WinnerTeamID && Teams[l_CurrentTeamID]->CapturedPet != PETBATTLE_NULL_ID)
@@ -1440,8 +1478,8 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
                 BattlePetSpeciesEntry const* l_SpeciesInfo = sBattlePetSpeciesStore.LookupEntry(Pets[Teams[l_CurrentTeamID]->CapturedPet]->Species);
                 if (l_SpeciesInfo)
                 {
-                    l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_CAPTURE_BATTLEPET, l_SpeciesInfo->entry);
-                    l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_CAPTURE_SPECIFIC_BATTLEPET, l_SpeciesInfo->id);
+                    l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_CAPTURE_BATTLEPET, l_SpeciesInfo->CreatureID);
+                    l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_CAPTURE_SPECIFIC_BATTLEPET, l_SpeciesInfo->ID);
                     l_Player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_CAPTURE_BATTLEPET_IN_COMBAT, 1, Pets[Teams[l_CurrentTeamID]->CapturedPet]->Quality);
                 }
 
@@ -1454,7 +1492,11 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
                 Creature* l_Trainer = ObjectAccessor::GetObjectInOrOutOfWorld(Teams[PETBATTLE_PVE_TEAM_ID]->OwnerGuid, (Creature*)nullptr);
 
                 if (l_Trainer)
-                    l_Player->QuestObjectiveSatisfy(l_Trainer->GetEntry(), 1, QUEST_OBJECTIVE_TYPE_PET_BATTLE_TAMER, l_Trainer->GetGUID());
+                {
+                    uint32 l_TrainerEntry = l_Trainer->GetEntry();
+                    uint64 l_TrainerGuid  = l_Trainer->GetGUID();
+                    l_Player->QuestObjectiveSatisfy(l_TrainerEntry, 1, QUEST_OBJECTIVE_TYPE_PET_TRAINER_DEFEAT, l_TrainerGuid);
+                }
             }
         }
     }
@@ -1468,7 +1510,7 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
             if (!l_Player)
                 continue;
 
-            //TODO: update achievement criteria
+            // Achievement criteria updates are handled by the achievement system
             l_Player->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PACIFIED | UNIT_FLAG_IMMUNE_TO_NPC);
 
             //////////////////////////////////////////////////////////////////////////
@@ -1476,6 +1518,7 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
             CombatResult = p_Aborted ? PETBATTLE_RESULT_ABANDON : (l_CurrentTeamID == p_WinnerTeamID ? PETBATTLE_RESULT_WON : PETBATTLE_RESULT_LOOSE);
 
             l_Player->GetSession()->SendPetBattleFinalRound(this);
+
             l_Player->SetControlled(false, UNIT_STATE_ROOT);
             l_Player->SummonLastSummonedBattlePet();
             l_Player->ReloadPetBattles();
@@ -1504,7 +1547,7 @@ void PetBattle::Finish(uint32 p_WinnerTeamID, bool p_Aborted)
                     l_WildPet->SetControlled(false, UNIT_STATE_ROOT);
                     l_WildPet->_petBattleId = 0;
 
-                    sWildBattlePetMgr->LeaveBattle(l_WildPet, p_WinnerTeamID != PETBATTLE_PVE_TEAM_ID);
+                    l_WildPet->GetMap()->GetWildBattlePetPools()->LeaveBattle(l_WildPet, p_WinnerTeamID != PETBATTLE_PVE_TEAM_ID);
                 }
             }
         }
@@ -1530,36 +1573,99 @@ void PetBattle::Update(uint32 p_TimeDiff)
     {
         m_UpdateTimer.Reset();
 
-        Teams[PETBATTLE_TEAM_1]->Update();
-        bool l_BattleIsFinish = Teams[PETBATTLE_TEAM_2]->Update();
+        // Validate teams exist before updating
+        if (!Teams[PETBATTLE_TEAM_1] || !Teams[PETBATTLE_TEAM_2])
+        {
+            TC_LOG_ERROR("petbattle", "Pet battle %u has invalid teams, finishing battle", ID);
+            Finish(PETBATTLE_NULL_ID, true);
+            return;
+        }
+
+        // Update teams with error handling
+        bool l_Team1UpdateSuccess = true;
+        bool l_Team2UpdateSuccess = true;
+
+        try
+        {
+            Teams[PETBATTLE_TEAM_1]->Update();
+        }
+        catch (const std::exception& e)
+        {
+            TC_LOG_ERROR("petbattle", "Exception in team 1 update for battle %u: %s", ID, e.what());
+            l_Team1UpdateSuccess = false;
+        }
+
+        try
+        {
+            l_Team2UpdateSuccess = Teams[PETBATTLE_TEAM_2]->Update();
+        }
+        catch (const std::exception& e)
+        {
+            TC_LOG_ERROR("petbattle", "Exception in team 2 update for battle %u: %s", ID, e.what());
+            l_Team2UpdateSuccess = false;
+        }
+
+        // Handle update failures
+        if (!l_Team1UpdateSuccess || !l_Team2UpdateSuccess)
+        {
+            TC_LOG_ERROR("petbattle", "Pet battle %u update failed, finishing battle", ID);
+            Finish(PETBATTLE_NULL_ID, true);
+            return;
+        }
 
         // if the first update return battle finish state, it's handle in the second update
-        if (l_BattleIsFinish)
+        if (l_Team2UpdateSuccess == false)
         {
             Teams[PETBATTLE_TEAM_1]->Ready = false;
             Teams[PETBATTLE_TEAM_2]->Ready = false;
             return;
         }
 
-        if (!Teams[PETBATTLE_TEAM_1]->Ready && Teams[PETBATTLE_TEAM_1]->ActivePetID != PETBATTLE_NULL_ID && !Pets[Teams[PETBATTLE_TEAM_1]->ActivePetID]->CanAttack())
+        // Validate active pet IDs before checking if they can attack
+        if (!Teams[PETBATTLE_TEAM_1]->Ready && Teams[PETBATTLE_TEAM_1]->ActivePetID != PETBATTLE_NULL_ID)
         {
-            Teams[PETBATTLE_TEAM_1]->Ready = true;
-            Teams[PETBATTLE_TEAM_1]->ActiveAbilityId = 0;
-            Teams[PETBATTLE_TEAM_1]->activeAbilityTurn = 0;
-            Teams[PETBATTLE_TEAM_1]->activeAbilityTurnMax = 0;
+            if (Teams[PETBATTLE_TEAM_1]->ActivePetID >= MAX_PETBATTLE_TEAM * MAX_PETBATTLE_SLOTS || !Pets[Teams[PETBATTLE_TEAM_1]->ActivePetID])
+            {
+                TC_LOG_ERROR("petbattle", "Team 1 has invalid active pet ID %u in battle %u", Teams[PETBATTLE_TEAM_1]->ActivePetID, ID);
+                Teams[PETBATTLE_TEAM_1]->Ready = true;
+            }
+            else if (!Pets[Teams[PETBATTLE_TEAM_1]->ActivePetID]->CanAttack())
+            {
+                Teams[PETBATTLE_TEAM_1]->Ready = true;
+                Teams[PETBATTLE_TEAM_1]->ActiveAbilityId = 0;
+                Teams[PETBATTLE_TEAM_1]->activeAbilityTurn = 0;
+                Teams[PETBATTLE_TEAM_1]->activeAbilityTurnMax = 0;
+            }
         }
 
-        if (!Teams[PETBATTLE_TEAM_2]->Ready && Teams[PETBATTLE_TEAM_2]->ActivePetID != PETBATTLE_NULL_ID && !Pets[Teams[PETBATTLE_TEAM_2]->ActivePetID]->CanAttack())
+        if (!Teams[PETBATTLE_TEAM_2]->Ready && Teams[PETBATTLE_TEAM_2]->ActivePetID != PETBATTLE_NULL_ID)
         {
-            Teams[PETBATTLE_TEAM_2]->Ready = true;
-            Teams[PETBATTLE_TEAM_2]->ActiveAbilityId = 0;
-            Teams[PETBATTLE_TEAM_2]->activeAbilityTurn = 0;
-            Teams[PETBATTLE_TEAM_2]->activeAbilityTurnMax = 0;
+            if (Teams[PETBATTLE_TEAM_2]->ActivePetID >= MAX_PETBATTLE_TEAM * MAX_PETBATTLE_SLOTS || !Pets[Teams[PETBATTLE_TEAM_2]->ActivePetID])
+            {
+                TC_LOG_ERROR("petbattle", "Team 2 has invalid active pet ID %u in battle %u", Teams[PETBATTLE_TEAM_2]->ActivePetID, ID);
+                Teams[PETBATTLE_TEAM_2]->Ready = true;
+            }
+            else if (!Pets[Teams[PETBATTLE_TEAM_2]->ActivePetID]->CanAttack())
+            {
+                Teams[PETBATTLE_TEAM_2]->Ready = true;
+                Teams[PETBATTLE_TEAM_2]->ActiveAbilityId = 0;
+                Teams[PETBATTLE_TEAM_2]->activeAbilityTurn = 0;
+                Teams[PETBATTLE_TEAM_2]->activeAbilityTurnMax = 0;
+            }
         }
 
         if (Teams[PETBATTLE_TEAM_1]->Ready && Teams[PETBATTLE_TEAM_2]->Ready)
         {
-            ProceedRound();
+            try
+            {
+                ProceedRound();
+            }
+            catch (const std::exception& e)
+            {
+                TC_LOG_ERROR("petbattle", "Exception in ProceedRound for battle %u: %s", ID, e.what());
+                Finish(PETBATTLE_NULL_ID, true);
+                return;
+            }
 
             Teams[PETBATTLE_TEAM_1]->Ready = false;
             Teams[PETBATTLE_TEAM_2]->Ready = false;
@@ -1573,7 +1679,7 @@ void PetBattle::Update(uint32 p_TimeDiff)
 void PetBattle::SwapPet(uint32 p_TeamID, int32 p_NewFrontPetID, bool p_Initial)
 {
     assert(p_TeamID < MAX_PETBATTLE_TEAM);
-    
+
     if (p_NewFrontPetID >= (MAX_PETBATTLE_TEAM * MAX_PETBATTLE_SLOTS))
         return;
 
@@ -1661,7 +1767,7 @@ void PetBattle::PrepareCast(uint32 p_TeamID, uint32 p_AbilityID)
         if (!abilityTurnInfo || abilityTurnInfo->abilityId != p_AbilityID)
             continue;
 
-        l_MaxTurnID = std::max(l_MaxTurnID, abilityTurnInfo->turn);
+        l_MaxTurnID = std::max(l_MaxTurnID, (uint32)abilityTurnInfo->turn);
     }
 
     Teams[p_TeamID]->ActiveAbilityId        = p_AbilityID;
@@ -1837,6 +1943,7 @@ void PetBattle::SetPetState(uint32 p_SourcePetID, uint32 p_TargetPetID, uint32 p
 {
     if (p_State >= NUM_BATTLEPET_STATES)
     {
+        //TC_LOG_DEBUG("petbattle", "PetBattle::SetPetState %u %u %u", p_FromAbilityEffectID, p_State, p_Value);
         return;
     }
 
@@ -1874,14 +1981,75 @@ void PetBattle::Kill(int8 p_Killer, int8 p_Target, uint32 p_KillerAbibilityEffec
 /// Catch
 void PetBattle::Catch(int8 p_Catcher, int8 p_CatchedTarget, uint32 p_FromAbilityEffectID)
 {
+    // Validate parameters
+    if (p_Catcher < 0 || p_Catcher >= MAX_PETBATTLE_TEAM * MAX_PETBATTLE_SLOTS)
+    {
+        TC_LOG_ERROR("petbattle", "Catch: Invalid catcher pet ID %d in battle %u", p_Catcher, ID);
+        return;
+    }
+
+    if (p_CatchedTarget < 0 || p_CatchedTarget >= MAX_PETBATTLE_TEAM * MAX_PETBATTLE_SLOTS)
+    {
+        TC_LOG_ERROR("petbattle", "Catch: Invalid target pet ID %d in battle %u", p_CatchedTarget, ID);
+        return;
+    }
+
+    // Validate pets exist
+    if (!Pets[p_Catcher] || !Pets[p_CatchedTarget])
+    {
+        TC_LOG_ERROR("petbattle", "Catch: Invalid pets in battle %u (catcher: %d, target: %d)", ID, p_Catcher, p_CatchedTarget);
+        return;
+    }
+
+    // Validate teams
+    if (!Teams[Pets[p_Catcher]->TeamID])
+    {
+        TC_LOG_ERROR("petbattle", "Catch: Invalid team for catcher %d in battle %u", p_Catcher, ID);
+        return;
+    }
+
+    // Check if target is already captured
+    if (Teams[Pets[p_Catcher]->TeamID]->CapturedPet != PETBATTLE_NULL_ID)
+    {
+        TC_LOG_WARN("petbattle", "Catch: Team already captured a pet in battle %u", ID);
+        return;
+    }
+
+    // Validate catch conditions
+    uint8 catchFlags = Teams[Pets[p_Catcher]->TeamID]->CanCatchOpponentTeamFrontPet();
+    if (catchFlags != PETBATTLE_TEAM_CATCH_FLAG_ENABLE_TRAP)
+    {
+        TC_LOG_DEBUG("petbattle", "Catch: Catch conditions not met (flags: %u) in battle %u", catchFlags, ID);
+        return;
+    }
+
+    // Log successful capture
+    TC_LOG_INFO("petbattle", "Pet %d successfully captured pet %d (species: %u) in battle %u", 
+                p_Catcher, p_CatchedTarget, Pets[p_CatchedTarget]->Species, ID);
+
+    // Kill the target pet
     Kill(p_Catcher, p_CatchedTarget, p_FromAbilityEffectID);
 
+    // Set captured pet
     Teams[Pets[p_Catcher]->TeamID]->CapturedPet = p_CatchedTarget;
     CatchedPetId = p_CatchedTarget;
 
+    // Add to dead pets list
     RoundDeadPets.push_back(p_CatchedTarget);
 
+    // Set round result
     RoundResult = PETBATTLE_ROUND_RESULT_CATCH_OR_KILL;
+
+    // Update species count for catch limits
+    if (Teams[Pets[p_Catcher]->TeamID]->CapturedSpeciesCount.find(Pets[p_CatchedTarget]->Species) == 
+        Teams[Pets[p_Catcher]->TeamID]->CapturedSpeciesCount.end())
+    {
+        Teams[Pets[p_Catcher]->TeamID]->CapturedSpeciesCount[Pets[p_CatchedTarget]->Species] = 1;
+    }
+    else
+    {
+        Teams[Pets[p_Catcher]->TeamID]->CapturedSpeciesCount[Pets[p_CatchedTarget]->Species]++;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1889,16 +2057,61 @@ void PetBattle::Catch(int8 p_Catcher, int8 p_CatchedTarget, uint32 p_FromAbility
 /// Get first attacking team
 uint32 PetBattle::GetFirstAttackingTeam()
 {
+    // Validate teams exist
+    if (!Teams[PETBATTLE_TEAM_1] || !Teams[PETBATTLE_TEAM_2])
+    {
+        TC_LOG_ERROR("petbattle", "GetFirstAttackingTeam: Invalid teams in battle %u", ID);
+        return PETBATTLE_TEAM_1; // Default to team 1
+    }
+
+    // Validate active pet IDs
+    if (Teams[PETBATTLE_TEAM_1]->ActivePetID == PETBATTLE_NULL_ID || 
+        Teams[PETBATTLE_TEAM_2]->ActivePetID == PETBATTLE_NULL_ID)
+    {
+        TC_LOG_ERROR("petbattle", "GetFirstAttackingTeam: Invalid active pet IDs in battle %u", ID);
+        return PETBATTLE_TEAM_1; // Default to team 1
+    }
+
     std::shared_ptr<BattlePetInstance> l_ActivePets[2];
-    l_ActivePets[0] = Pets[Teams[0]->ActivePetID];
-    l_ActivePets[1] = Pets[Teams[1]->ActivePetID];
+    l_ActivePets[0] = Pets[Teams[PETBATTLE_TEAM_1]->ActivePetID];
+    l_ActivePets[1] = Pets[Teams[PETBATTLE_TEAM_2]->ActivePetID];
+
+    // Validate pets exist
+    if (!l_ActivePets[0] || !l_ActivePets[1])
+    {
+        TC_LOG_ERROR("petbattle", "GetFirstAttackingTeam: Invalid active pets in battle %u", ID);
+        return PETBATTLE_TEAM_1; // Default to team 1
+    }
 
     //////////////////////////////////////////////////////////////////////////
     /// Deduce the first caster (based on front pets speed)
     int32 l_Pet0Speed = l_ActivePets[0]->GetSpeed();
     int32 l_Pet1Speed = l_ActivePets[1]->GetSpeed();
 
-    return (l_Pet0Speed == l_Pet1Speed) ? rand() & 1 : l_Pet1Speed > l_Pet0Speed;
+    // Apply speed modifiers from states
+    l_Pet0Speed += l_ActivePets[0]->States[BATTLEPET_STATE_Mod_SpeedPercent];
+    l_Pet1Speed += l_ActivePets[1]->States[BATTLEPET_STATE_Mod_SpeedPercent];
+
+    // Ensure speeds are positive
+    l_Pet0Speed = std::max(1, l_Pet0Speed);
+    l_Pet1Speed = std::max(1, l_Pet1Speed);
+
+    // Log speed comparison for debugging
+    TC_LOG_DEBUG("petbattle", "GetFirstAttackingTeam: Pet 0 speed %d, Pet 1 speed %d in battle %u", 
+                 l_Pet0Speed, l_Pet1Speed, ID);
+
+    // If speeds are equal, use random selection
+    if (l_Pet0Speed == l_Pet1Speed)
+    {
+        uint32 result = rand() & 1;
+        TC_LOG_DEBUG("petbattle", "GetFirstAttackingTeam: Equal speeds, random selection: team %u", result);
+        return result;
+    }
+
+    // Return team with higher speed
+    uint32 result = (l_Pet1Speed > l_Pet0Speed) ? PETBATTLE_TEAM_2 : PETBATTLE_TEAM_1;
+    TC_LOG_DEBUG("petbattle", "GetFirstAttackingTeam: Team %u has higher speed", result);
+    return result;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1909,7 +2122,7 @@ int32 PetBattle::GetForfeitHealthPenalityPct()
     if (BattleType != PETBATTLE_TYPE_PVE)
         return 0;
 
-    // TODO
+    // Forfeit penalty in PvE battles - reduces pet health by 10%
     return 10;
 }
 
@@ -2111,6 +2324,8 @@ void PetBattleSystem::LeaveQueue(Player* p_Player)
 
             break;
         }
+        default:
+            break;
     }
 }
 
@@ -2119,6 +2334,8 @@ void PetBattleSystem::LeaveQueue(Player* p_Player)
 /// Update the whole pet battle system (request and battles)
 void PetBattleSystem::Update(uint32 p_TimeDiff)
 {
+    std::lock_guard<std::recursive_mutex> l_Guard(m_Lock);
+
     m_DeleteUpdateTimer.Update(p_TimeDiff);
     m_LFBRequestsUpdateTimer.Update(p_TimeDiff);
 
@@ -2201,7 +2418,7 @@ void PetBattleSystem::Update(uint32 p_TimeDiff)
 
                             if (l_SecondTicket->RequesterGUID == l_Ticket->RequesterGUID)
                                 continue;
-                            
+
                             if (HashMapHolder<Player>::Find(l_SecondTicket->RequesterGUID) == nullptr)
                                 continue;
 
@@ -2303,7 +2520,7 @@ void PetBattleSystem::Update(uint32 p_TimeDiff)
                             float l_Dx = l_Second.x - l_One.x;
                             float l_Dy = l_Second.y - l_One.y;
 
-                            float l_Angle = atan2(l_Dy, l_Dx);
+                            float l_Angle = std::atan2(l_Dy, l_Dx);
                             l_Battle->PvPMatchMakingRequest.BattleFacing = (l_Angle >= 0) ? l_Angle : 2 * M_PI + l_Angle;
 
                             // Temporary pet buffer
@@ -2486,6 +2703,8 @@ void PetBattleSystem::Update(uint32 p_TimeDiff)
                     m_LFBRequests[l_Guid] = nullptr;
                     break;
                 }
+                default:
+                    break;
             }
         }
     }

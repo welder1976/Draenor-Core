@@ -29,31 +29,31 @@ void DoScriptText(int32 p_ItemTextEntry, WorldObject* p_Source, Unit* p_Target)
 {
     if (!p_Source)
     {
-        sLog->outError(LOG_FILTER_TSCR, "DoScriptText entry %i, invalid Source pointer.", p_ItemTextEntry);
+        TC_LOG_ERROR("scripts", "DoScriptText entry %i, invalid Source pointer.", p_ItemTextEntry);
         return;
     }
 
     if (p_ItemTextEntry >= 0)
     {
-        sLog->outError(LOG_FILTER_TSCR, "DoScriptText with source entry %u (TypeId=%u, guid=%u) attempts to process text entry %i, but text entry must be negative.", p_Source->GetEntry(), p_Source->GetTypeId(), p_Source->GetGUIDLow(), p_ItemTextEntry);
+        TC_LOG_ERROR("scripts", "DoScriptText with source entry %u (TypeId=%u, guid=%u) attempts to process text entry %i, but text entry must be negative.", p_Source->GetEntry(), p_Source->GetTypeId(), p_Source->GetGUIDLow(), p_ItemTextEntry);
         return;
     }
 
     StringTextData const* l_TextDatas = sScriptSystemMgr->GetTextData(p_ItemTextEntry);
     if (!l_TextDatas)
     {
-        sLog->outError(LOG_FILTER_TSCR, "DoScriptText with source entry %u (TypeId=%u, guid=%u) could not find text entry %i.", p_Source->GetEntry(), p_Source->GetTypeId(), p_Source->GetGUIDLow(), p_ItemTextEntry);
+        TC_LOG_ERROR("scripts", "DoScriptText with source entry %u (TypeId=%u, guid=%u) could not find text entry %i.", p_Source->GetEntry(), p_Source->GetTypeId(), p_Source->GetGUIDLow(), p_ItemTextEntry);
         return;
     }
 
-    sLog->outDebug(LOG_FILTER_TSCR, "DoScriptText: text entry=%i, Sound=%u, Type=%u, Language=%u, Emote=%u", p_ItemTextEntry, l_TextDatas->uiSoundId, l_TextDatas->uiType, l_TextDatas->uiLanguage, l_TextDatas->uiEmote);
+    TC_LOG_DEBUG("scripts", "DoScriptText: text entry=%i, Sound=%u, Type=%u, Language=%u, Emote=%u", p_ItemTextEntry, l_TextDatas->uiSoundId, l_TextDatas->uiType, l_TextDatas->uiLanguage, l_TextDatas->uiEmote);
 
     if (l_TextDatas->uiSoundId)
     {
         if (sSoundEntriesStore.LookupEntry(l_TextDatas->uiSoundId))
             p_Source->SendPlaySound(l_TextDatas->uiSoundId, false);
         else
-            sLog->outError(LOG_FILTER_TSCR, "DoScriptText entry %i tried to process invalid sound id %u.", p_ItemTextEntry, l_TextDatas->uiSoundId);
+            TC_LOG_ERROR("scripts", "DoScriptText entry %i tried to process invalid sound id %u.", p_ItemTextEntry, l_TextDatas->uiSoundId);
     }
 
     if (l_TextDatas->uiEmote)
@@ -61,7 +61,7 @@ void DoScriptText(int32 p_ItemTextEntry, WorldObject* p_Source, Unit* p_Target)
         if (p_Source->GetTypeId() == TYPEID_UNIT || p_Source->IsPlayer())
             ((Unit*)p_Source)->HandleEmoteCommand(l_TextDatas->uiEmote);
         else
-            sLog->outError(LOG_FILTER_TSCR, "DoScriptText entry %i tried to process emote for invalid TypeId (%u).", p_ItemTextEntry, p_Source->GetTypeId());
+            TC_LOG_ERROR("scripts", "DoScriptText entry %i tried to process emote for invalid TypeId (%u).", p_ItemTextEntry, p_Source->GetTypeId());
     }
 
     switch (l_TextDatas->uiType)
@@ -83,7 +83,7 @@ void DoScriptText(int32 p_ItemTextEntry, WorldObject* p_Source, Unit* p_Target)
             if (p_Target && p_Target->IsPlayer())
                 p_Source->MonsterWhisper(p_ItemTextEntry, p_Target->GetGUID());
             else
-                sLog->outError(LOG_FILTER_TSCR, "DoScriptText entry %i cannot whisper without target unit (TYPEID_PLAYER).", p_ItemTextEntry);
+                TC_LOG_ERROR("scripts", "DoScriptText entry %i cannot whisper without target unit (TYPEID_PLAYER).", p_ItemTextEntry);
 
             break;
         }
@@ -92,7 +92,7 @@ void DoScriptText(int32 p_ItemTextEntry, WorldObject* p_Source, Unit* p_Target)
             if (p_Target && p_Target->IsPlayer())
                 p_Source->MonsterWhisper(p_ItemTextEntry, p_Target->GetGUID(), true);
             else
-                sLog->outError(LOG_FILTER_TSCR, "DoScriptText entry %i cannot whisper without target unit (TYPEID_PLAYER).", p_ItemTextEntry);
+                TC_LOG_ERROR("scripts", "DoScriptText entry %i cannot whisper without target unit (TYPEID_PLAYER).", p_ItemTextEntry);
 
             break;
         }
@@ -144,7 +144,7 @@ template<class TScript> class ScriptRegistry
             {
                 if (l_It->second == p_Script)
                 {
-                    sLog->outError(LOG_FILTER_TSCR, "Script '%s' has same memory pointer as '%s'.",
+                    TC_LOG_ERROR("scripts", "Script '%s' has same memory pointer as '%s'.",
                         p_Script->GetName().c_str(), l_It->second->GetName().c_str());
 
                     return;
@@ -182,7 +182,7 @@ template<class TScript> class ScriptRegistry
                 {
                     // The script uses a script name from database, but isn't assigned to anything.
                     if (p_Script->GetName().find("example") == std::string::npos && p_Script->GetName().find("Smart") == std::string::npos)
-                        sLog->outError(LOG_FILTER_SQL, "Script named '%s' does not have a script name assigned in database.",
+                        TC_LOG_ERROR("sql.sql", "Script named '%s' does not have a script name assigned in database.",
                             p_Script->GetName().c_str());
 
                         // These scripts don't get stored anywhere so throw them into this to avoid leaking memory
@@ -250,9 +250,9 @@ template<class TScript> class ScriptRegistry
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 /// Constructor
-ScriptMgr::ScriptMgr() : m_ScriptCount(0), m_ScheduledScripts(0)
+ScriptMgr::ScriptMgr() : m_ScriptCount(0)
 {
-
+    _scheduledScripts = 0;
 }
 
 /// Destructor
@@ -270,12 +270,12 @@ void ScriptMgr::Initialize()
 
     LoadDatabase();
 
-    sLog->outInfo(LOG_FILTER_SERVER_LOADING, "Loading C++ scripts");
+    TC_LOG_INFO("server.loading", "Loading C++ scripts");
 
     FillSpellSummary();
     AddScripts();
 
-    sLog->outInfo(LOG_FILTER_SERVER_LOADING, ">> Loaded %u C++ scripts in %u ms", GetScriptCount(), GetMSTimeDiffToNow(l_OldMSTime));
+    TC_LOG_INFO("server.loading", ">> Loaded %u C++ scripts in %u ms", GetScriptCount(), GetMSTimeDiffToNow(l_OldMSTime));
 }
 
 /// Unload all script
@@ -441,25 +441,25 @@ void ScriptMgr::FillSpellSummary()
 /// Increase scheduled script count
 uint32 ScriptMgr::IncreaseScheduledScriptsCount()
 {
-    return ++m_ScheduledScripts;
+    return uint32(++_scheduledScripts);
 }
 
 /// Decrease scheduled script count
 uint32 ScriptMgr::DecreaseScheduledScriptCount()
 {
-    return --m_ScheduledScripts;
+    return uint32(--_scheduledScripts);
 }
 
 /// Decrease scheduled script count
 uint32 ScriptMgr::DecreaseScheduledScriptCount(size_t count)
 {
-    return m_ScheduledScripts -= count;
+    return uint32(_scheduledScripts -= long(count));
 }
 
 /// Is script scheduled
 bool ScriptMgr::IsScriptScheduled() const
 {
-    return m_ScheduledScripts > 0;
+    return _scheduledScripts > 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1388,7 +1388,7 @@ void ScriptMgr::OnNetworkStop()
 
 /// Called when a remote socket establishes a connection to the server. Do not store the socket object.
 /// @p_Socket : Opened socket
-void ScriptMgr::OnSocketOpen(WorldSocket* p_Socket)
+void ScriptMgr::OnSocketOpen(WorldTcpSession* p_Socket)
 {
     ASSERT(p_Socket);
 
@@ -1398,27 +1398,37 @@ void ScriptMgr::OnSocketOpen(WorldSocket* p_Socket)
 /// Called when a socket is closed. Do not store the socket object, and do not rely on the connection being open; it is not.
 /// @p_Socket : Closed socket
 /// @p_WasNew : Was new ?
-void ScriptMgr::OnSocketClose(WorldSocket* p_Socket, bool p_WasNew)
+void ScriptMgr::OnSocketClose(WorldTcpSession* p_Socket, bool p_WasNew)
 {
     ASSERT(p_Socket);
 
     FOREACH_SCRIPT(ServerScript)->OnSocketClose(p_Socket, p_WasNew);
 }
 
+void ScriptMgr::OnAccountLogin(uint32 accountId)
+{
+    FOREACH_SCRIPT(ServerScript)->OnAccountLogin(accountId);
+}
+
+void ScriptMgr::OnFailedAccountLogin(uint32 accountId)
+{
+    FOREACH_SCRIPT(ServerScript)->OnFailedAccountLogin(accountId);
+}
+
 /// Called when a packet is sent to a client. The packet object is a copy of the original packet, so reading and modifying it is safe.
 /// @p_Socket : Socket who send the packet
 /// @p_Packet : Sent packet
-void ScriptMgr::OnPacketReceive(WorldSocket* p_Socket, WorldPacket p_Packet, WorldSession* p_Session)
+void ScriptMgr::OnPacketReceive(WorldTcpSession* p_Socket, WorldPacket p_Packet)
 {
     ASSERT(p_Socket);
 
-    FOREACH_SCRIPT(ServerScript)->OnPacketReceive(p_Socket, p_Packet, p_Session);
+    FOREACH_SCRIPT(ServerScript)->OnPacketReceive(p_Socket, p_Packet, nullptr);
 }
 
 /// Called when a (valid) packet is received by a client. The packet object is a copy of the original packet, so reading and modifying it is safe.
 /// @p_Socket : Socket who received the packet
 /// @p_Packet : Received packet
-void ScriptMgr::OnPacketSend(WorldSocket* p_Socket, WorldPacket p_Packet)
+void ScriptMgr::OnPacketSend(WorldTcpSession* p_Socket, WorldPacket p_Packet)
 {
     ASSERT(p_Socket);
 
@@ -1429,7 +1439,7 @@ void ScriptMgr::OnPacketSend(WorldSocket* p_Socket, WorldPacket p_Packet)
 /// This allows you to actually handle unknown packets (for whatever purpose).
 /// @p_Socket : Socket who received the packet
 /// @p_Packet : Received packet
-void ScriptMgr::OnUnknownPacketReceive(WorldSocket* p_Socket, WorldPacket p_Packet)
+void ScriptMgr::OnUnknownPacketReceive(WorldTcpSession* p_Socket, WorldPacket p_Packet)
 {
     ASSERT(p_Socket);
 
@@ -2215,7 +2225,7 @@ void ScriptMgr::OnPlayerGrabRessource(Player* p_Player, GameObject* p_GameObject
 Battleground* ScriptMgr::CreateBattleground(BattlegroundTypeId /*p_TypeID*/)
 {
     // TODO: Implement script-side battlegrounds.
-    ASSERT(false);
+    ABORT();
     return NULL;
 }
 
@@ -2570,7 +2580,7 @@ WorldMapScript::WorldMapScript(const char* p_Name, uint32 p_MapID)
     : ScriptObjectImpl(p_Name), MapScript<Map>(p_MapID)
 {
     if (GetEntry() && !GetEntry()->IsWorldMap())
-        sLog->outError(LOG_FILTER_TSCR, "WorldMapScript for map %u is invalid.", p_MapID);
+        TC_LOG_ERROR("scripts", "WorldMapScript for map %u is invalid.", p_MapID);
 
     ScriptRegistry<WorldMapScript>::AddScript(this);
 }
@@ -2582,7 +2592,7 @@ InstanceMapScript::InstanceMapScript(const char* p_Name, uint32 p_MapID)
     : ScriptObjectImpl(p_Name), MapScript<InstanceMap>(p_MapID)
 {
     if (GetEntry() && !GetEntry()->IsDungeon())
-        sLog->outError(LOG_FILTER_TSCR, "InstanceMapScript for map %u is invalid.", p_MapID);
+        TC_LOG_ERROR("scripts", "InstanceMapScript for map %u is invalid.", p_MapID);
 
     ScriptRegistry<InstanceMapScript>::AddScript(this);
 }
@@ -2594,7 +2604,7 @@ BattlegroundMapScript::BattlegroundMapScript(const char* p_Name, uint32 p_MapID)
     : ScriptObjectImpl(p_Name), MapScript<BattlegroundMap>(p_MapID)
 {
     if (GetEntry() && !GetEntry()->IsBattleground())
-        sLog->outError(LOG_FILTER_TSCR, "BattlegroundMapScript for map %u is invalid.", p_MapID);
+        TC_LOG_ERROR("scripts", "BattlegroundMapScript for map %u is invalid.", p_MapID);
 
     ScriptRegistry<BattlegroundMapScript>::AddScript(this);
 }

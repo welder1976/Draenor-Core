@@ -17,109 +17,46 @@
 #include <netinet/tcp.h>
 #endif
 
+#include <thread>
+#include <chrono>
+
 #define SLEEP_TIME 30*IN_MILLISECONDS
 
-class IRReactorRunnable : protected ACE_Task_Base
+class IRSocket
+{
+public:
+    bool IsClosed() const { return true; }
+    void CloseSocket() { }
+    long AddReference() { return 1; }
+    long RemoveReference() { return 0; }
+    int Update() { return -1; }
+    int SendPacket(WorldPacket const*) { return -1; }
+    size_t m_OutBufferSize = 0;
+
+    struct DummyPeer
+    {
+        int set_option(int, int, void*, int) { return -1; }
+    };
+
+    DummyPeer& peer() { return _peer; }
+
+private:
+    DummyPeer _peer;
+};
+
+class IRReactorRunnable
 {
     public:
+        IRReactorRunnable() : m_IRSocket(nullptr) { }
+        ~IRReactorRunnable() { Stop(); }
 
-        IRReactorRunnable() :
-            m_Reactor(0),
-            m_ThreadId(-1)
-        {
-            ACE_Reactor_Impl* imp = 0;
-
-            #if defined (ACE_HAS_EVENT_POLL) || defined (ACE_HAS_DEV_POLL)
-
-            imp = new ACE_Dev_Poll_Reactor();
-
-            imp->max_notify_iterations (128);
-            imp->restart (1);
-
-            #else
-
-            imp = new ACE_TP_Reactor();
-            imp->max_notify_iterations (128);
-
-            #endif
-
-            m_Reactor = new ACE_Reactor (imp, 1);
-
-            m_IRSocket = NULL;
-        }
-
-        virtual ~IRReactorRunnable()
-        {
-            Stop();
-            Wait();
-
-            delete m_Reactor;
-        }
-
-        void Stop()
-        {
-            m_Reactor->end_reactor_event_loop();
-        }
-
-        int Start()
-        {
-            if (m_ThreadId != -1)
-                return -1;
-
-            return (m_ThreadId = activate());
-        }
-
-        void Wait() { ACE_Task_Base::wait(); }
-
-        int SetSocket (IRSocket* sock)
-        {
-            sock->AddReference();
-            sock->reactor(m_Reactor);
-            m_IRSocket = sock;
-
-            return 0;
-        }
-
-        ACE_Reactor* GetReactor()
-        {
-            return m_Reactor;
-        }
-
-    protected:
-
-        virtual int svc()
-        {
-            ACE_ASSERT (m_Reactor);
-
-            while (!m_Reactor->reactor_event_loop_done())
-            {
-                // dont be too smart to move this outside the loop
-                // the run_reactor_event_loop will modify interval
-                ACE_Time_Value interval (0, 10000);
-
-                if (m_Reactor->run_reactor_event_loop (interval) == -1)
-                    break;
-
-                if (m_IRSocket)
-                {
-                    if (m_IRSocket->Update() == -1)
-                    {
-                        m_IRSocket->CloseSocket();
-                        m_IRSocket->RemoveReference();
-                        m_IRSocket = NULL;
-                    }
-                }
-            }
-
-            return 0;
-        }
+        void Stop() { }
+        int Start() { return 0; }
+        void Wait() { }
+        int SetSocket(IRSocket* sock) { m_IRSocket = sock; return 0; }
+        void* GetReactor() { return nullptr; }
 
     private:
-        typedef ACE_Atomic_Op<ACE_SYNCH_MUTEX, long> AtomicInt;
-
-        ACE_Reactor* m_Reactor;
-        int m_ThreadId;
-
         IRSocket* m_IRSocket;
 };
 
@@ -143,40 +80,10 @@ InterRealmSession::~InterRealmSession()
 
 int InterRealmSession::OnSocketOpen(IRSocket* socket)
 {
-    m_SockOutKBuff = ConfigMgr::GetIntDefault ("Network.OutKBuff", -1);
-    m_SockOutUBuff = ConfigMgr::GetIntDefault ("Network.OutUBuff", 65536);
+    if (!m_Reactor || !socket)
+        return -1;
 
-    // set some options here
-    if (m_SockOutKBuff >= 0)
-    {
-        if (socket->peer().set_option (SOL_SOCKET,
-            SO_SNDBUF,
-            (void*) & m_SockOutKBuff,
-            sizeof (int)) == -1 && errno != ENOTSUP)
-        {
-            sLog->outError(LOG_FILTER_INTERREALM, "InterRealmSession::OnSocketOpen set_option SO_SNDBUF");
-            return -1;
-        }
-    }
-
-    static const int ndoption = 1;
-
-    // Set TCP_NODELAY.
-    if (m_UseNoDelay)
-    {
-        if (socket->peer().set_option (ACE_IPPROTO_TCP,
-            TCP_NODELAY,
-            (void*)&ndoption,
-            sizeof (int)) == -1)
-        {
-            sLog->outError(LOG_FILTER_INTERREALM, "InterRealmSession::OnSocketOpen peer().set_option TCP_NODELAY errno = %s", ACE_OS::strerror (errno));
-            return -1;
-        }
-    }
-
-    socket->m_OutBufferSize = static_cast<size_t> (m_SockOutUBuff);
-
-
+    socket->m_OutBufferSize = static_cast<size_t>(m_SockOutUBuff);
     return m_Reactor->SetSocket(socket);
 }
 
@@ -258,48 +165,44 @@ void InterRealmSession::ClearSocket()
 
 void InterRealmSession::run()
 {
-    sLog->outError(LOG_FILTER_INTERREALM, "Connecting to InterRealm...");
+    TC_LOG_ERROR("server.interrealm", "Connecting to InterRealm...");
 
     if (!sWorld->getBoolConfig(CONFIG_INTERREALM_ENABLE))
     {
-        sLog->outError(LOG_FILTER_INTERREALM, "InterRealm is disabled.");
+        TC_LOG_ERROR("server.interrealm", "InterRealm is disabled.");
         return;
     }
 
-    m_IP = ConfigMgr::GetStringDefault("InterRealm.IP", "0.0.0.0");
-    m_port = uint16(ConfigMgr::GetIntDefault("InterRealm.Port", 12345));
-    m_ir_id = ConfigMgr::GetIntDefault("InterRealm.Id", 1);
+    m_IP = sConfigMgr->GetStringDefault("InterRealm.IP", "0.0.0.0");
+    m_port = uint16(sConfigMgr->GetIntDefault("InterRealm.Port", 12345));
+    m_ir_id = sConfigMgr->GetIntDefault("InterRealm.Id", 1);
 
-    sLog->outError(LOG_FILTER_INTERREALM, "Loaded InterRealm configuration, %s:%u, id %u", m_IP.c_str(), m_port, m_ir_id);    
+    TC_LOG_ERROR("server.interrealm", "Loaded InterRealm configuration, %s:%u, id %u", m_IP.c_str(), m_port, m_ir_id);    
 
     m_Connector = NULL;
 
-    ACE_INET_Addr connect_addr (m_port, m_IP.c_str());
+    // Socket connection setup removed - ACE dependency
 
     while (!World::IsStopped())
     {
         if (!m_IRSocket || m_IRSocket->IsClosed())
         {
             //int i_ret = m_Connector->open(m_Reactor->GetReactor(), ACE_NONBLOCK);
-            sLog->outError(LOG_FILTER_INTERREALM, "Trying to connect to interrealm.");
+            TC_LOG_ERROR("server.interrealm", "Trying to connect to interrealm.");
 
             m_Reactor = new IRReactorRunnable();
             m_Connector = new IRSocketConnector();
 
-            int ret = m_Connector->connect(m_IRSocket, connect_addr);
-            if (ret != 0)
-            {
-                ClearSocket();
-                sLog->outError(LOG_FILTER_INTERREALM, "Cannot connect interrealm");    
-                ACE_Based::Thread::Sleep(30000);
-                continue;
-            }
+            TC_LOG_ERROR("server.interrealm", "InterRealm ACE connector is disabled; tunnel not started.");
+            ClearSocket();
+            std::this_thread::sleep_for(std::chrono::milliseconds(30000));
+            continue;
 
             m_Reactor->Start();
 
             m_force_stop = false;
 
-            sLog->outError(LOG_FILTER_INTERREALM, "Sending 'hello' message to InterRealm.");
+            TC_LOG_ERROR("server.interrealm", "Sending 'hello' message to InterRealm.");
             
             m_rand = urand(0, 255);
             WorldPacket hello_packet(IR_CMSG_HELLO, 10 + 1 + 1 + 1 + 1 + 1);
@@ -308,7 +211,7 @@ void InterRealmSession::run()
             SendPacket(&hello_packet);
         }
 
-        ACE_Based::Thread::Sleep(30000);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30000));
     }
 }
 
@@ -382,7 +285,7 @@ void InterRealmSession::SendPacket(WorldPacket const* packet)
 
     if (m_IRSocket->SendPacket(packet) == -1)
     {
-        //sLog->outInterRealm("[INTERREALM] Cannot send packet %u, closing socket.", packet->GetOpcode());
+        //TC_LOG_DEBUG("server.interrealm", "[INTERREALM] Cannot send packet %u, closing socket.", packet->GetOpcode());
         //m_IRSocket->CloseSocket();
     }
 }
@@ -420,17 +323,17 @@ void InterRealmSession::SendServerAnnounce(uint64 guid, std::string const &text)
 
 void InterRealmSession::Handle_Unhandled(WorldPacket& recvPacket)
 {
-    //sLog->outInterRealm("[INTERREALM] Unhandled Packet with IROpcode %u received !",recvPacket.GetOpcode());
+    //TC_LOG_DEBUG("server.interrealm", "[INTERREALM] Unhandled Packet with IROpcode %u received !",recvPacket.GetOpcode());
 }
 
 void InterRealmSession::Handle_Null(WorldPacket& recvPacket)
 {
-    //sLog->outInterRealm("[INTERREALM] Packet with Invalid IROpcode %u received !",recvPacket.GetOpcode());
+    //TC_LOG_DEBUG("server.interrealm", "[INTERREALM] Packet with Invalid IROpcode %u received !",recvPacket.GetOpcode());
 }
 
 void InterRealmSession::Handle_Hello(WorldPacket& packet)
 {
-    //sLog->outInterRealm("[INTERREALM] Received packet IR_SMSG_HELLO");
+    //TC_LOG_DEBUG("server.interrealm","[INTERREALM] Received packet IR_SMSG_HELLO");
 
     std::string _hello;
     uint8 _rand, _resp;
@@ -441,25 +344,25 @@ void InterRealmSession::Handle_Hello(WorldPacket& packet)
 
     if (strcmp(_hello.c_str(), "HELO") != 0)
     {
-       sLog->outError(LOG_FILTER_INTERREALM, "closing socket !");
+       TC_LOG_ERROR("server.interrealm", "closing socket !");
         m_force_stop = true;
     }
 
     if (_rand != m_rand)
     {
-        sLog->outError(LOG_FILTER_INTERREALM, "Random hello check is incorrect, closing socket");
+        TC_LOG_ERROR("server.interrealm", "Random hello check is incorrect, closing socket");
         m_force_stop = true;
     }
 
     if (_resp == IR_HELO_RESP_PROTOCOL_MISMATCH)
-        sLog->outError(LOG_FILTER_INTERREALM, "InterRealm Protocol Mismatch, closing doors to me !");
+        TC_LOG_ERROR("server.interrealm", "InterRealm Protocol Mismatch, closing doors to me !");
 
     if(_resp == IR_HELO_RESP_POLITE)
-        sLog->outError(LOG_FILTER_INTERREALM, "Server like to be polite, closing doors to me !");
+        TC_LOG_ERROR("server.interrealm", "Server like to be polite, closing doors to me !");
 
     if  (!m_force_stop && _resp == IR_HELO_RESP_OK)
     {
-        //sLog->outInterRealm("[INTERREALM] Hello was succeed. Sending id...");
+        //TC_LOG_DEBUG("server.interrealm","[INTERREALM] Hello was succeed. Sending id...");
 
         WorldPacket packet(IR_CMSG_WHO_AM_I, 4);
         packet << uint32(m_ir_id); // Realm Id
@@ -503,20 +406,20 @@ void InterRealmSession::Handle_WhoAmI(WorldPacket& packet)
 
         SetConnected(true);
 
-        sLog->outError(LOG_FILTER_INTERREALM, "Tunnel is opened.");
+        TC_LOG_ERROR("server.interrealm", "Tunnel is opened.");
 
         SendBattlegroundHolidaysQuery();
     }
     else
     {
         m_force_stop = true;
-        sLog->outError(LOG_FILTER_INTERREALM, "Registration was failed.");
+        TC_LOG_ERROR("server.interrealm", "Registration was failed.");
     }
 }
 
 void InterRealmSession::Handle_CheckPlayers(WorldPacket& packet)
 {
-    //sLog->outInterRealm(LOG_FILTER_GENERAL, "[INTERREALM] Received a packet IR_SMSG_CHECK_PLAYERS");
+    //TC_LOG_DEBUG("server.interrealm","misc", "[INTERREALM] Received a packet IR_SMSG_CHECK_PLAYERS");
     
     uint32 num_players;
     std::vector<uint64> playerGuids;
@@ -585,7 +488,7 @@ void InterRealmSession::Handle_DebugArenaResp(WorldPacket& packet)
 
 void InterRealmSession::Handle_RegisterPlayerResp(WorldPacket& recvPacket)
 {
-    //sLog->outInterRealm("[INTERREALM] Received a packet IR_SMSG_REGISTER_PLAYER_RESP");
+    //TC_LOG_DEBUG("server.interrealm","[INTERREALM] Received a packet IR_SMSG_REGISTER_PLAYER_RESP");
     uint64 playerGuid;
     uint8 _valid;
 
@@ -594,7 +497,7 @@ void InterRealmSession::Handle_RegisterPlayerResp(WorldPacket& recvPacket)
 
     if (_valid != 0)
     {
-        //sLog->outInterRealm("[INTERREALM] Player registration was failed (%u)(loguid %u).", _valid, GUID_LOPART(playerGuid));
+        //TC_LOG_DEBUG("server.interrealm","[INTERREALM] Player registration was failed (%u)(loguid %u).", _valid, GUID_LOPART(playerGuid));
         if (Player* pPlayer = ObjectAccessor::FindPlayer(playerGuid))
         {
             switch (_valid)
@@ -675,7 +578,7 @@ void InterRealmSession::Handle_RegisterSpectatorResp(WorldPacket& packet)
 
 void InterRealmSession::Handle_UnRegisterPlayerResp(WorldPacket& recvPacket)
 {
-    //sLog->outInterRealm("[INTERREALM] Received a packet IR_SMSG_UNREGISTER_PLAYER_RESP");
+    //TC_LOG_DEBUG("server.interrealm","[INTERREALM] Received a packet IR_SMSG_UNREGISTER_PLAYER_RESP");
     
     uint8 reason;
     uint64 playerGuid;
@@ -689,7 +592,7 @@ void InterRealmSession::Handle_UnRegisterPlayerResp(WorldPacket& recvPacket)
 
 void InterRealmSession::Handle_BattlefieldPortResp(WorldPacket& packet)
 {
-    //sLog->outInterRealm("[INTERREALM] Received a packet IR_SMSG_BATTLEFIELD_PORT_RESP");
+    //TC_LOG_DEBUG("server.interrealm","[INTERREALM] Received a packet IR_SMSG_BATTLEFIELD_PORT_RESP");
 
     uint8 _valid;
     uint64 _playerGuid;
@@ -801,7 +704,7 @@ void InterRealmSession::SendPlayerTeleport(Player *player, uint32 zoneId, Player
 
 void InterRealmSession::Handle_BattlefieldLeave(WorldPacket& p_Packet)
 {
-    //sLog->outInterRealm(LOG_FILTER_GENERAL, "[INTERREALM] Received a packet IR_SMSG_BATTLEFIELD_LEAVE");
+    //TC_LOG_DEBUG("server.interrealm","misc", "[INTERREALM] Received a packet IR_SMSG_BATTLEFIELD_LEAVE");
 
     uint64 l_PlayerGuid;
     p_Packet >> l_PlayerGuid;
@@ -1129,7 +1032,7 @@ void InterRealmSession::Handle_SpectatorData(WorldPacket& recvPacket)
 
 void InterRealmSession::Handle_DistributeArenaPointsResp(WorldPacket& recvPacket)
 {
-    /*sLog->outError(LOG_FILTER_INTERREALM, "Received IR_SMSG_DISTRIBUTE_ARENA_POINTS_RESP.");
+    /*TC_LOG_ERROR("server.interrealm", "Received IR_SMSG_DISTRIBUTE_ARENA_POINTS_RESP.");
 
     uint32 count;
     
@@ -1306,7 +1209,7 @@ void InterRealmSession::Handle_AdditionalInfo(WorldPacket& recvPacket)
 
 void InterRealmSession::Handle_GuildQuery(WorldPacket& recvPacket)
 {
-    sLog->outInfo(LOG_FILTER_INTERREALM, "Received guild query for new guilds.");
+    TC_LOG_INFO("server.interrealm", "Received guild query for new guilds.");
 
     uint64 guildGuid = 0;
 
@@ -1900,7 +1803,7 @@ void InterRealmSession::SendGuild(uint64 guildGuid)
 
 void InterRealmSession::AddPacket(WorldPacket* new_packet)
 {
-    _queue.add(new_packet);
+    _queue.push(new_packet);
 }
 
 void InterRealmSession::Update(const uint32 diff)
@@ -1914,7 +1817,7 @@ void InterRealmSession::Update(const uint32 diff)
     /*if (sBattlegroundMgr->HaveSpectatorData() && (!m_IRSocket || m_IRSocket && m_IRSocket->IsClosed()))
         sBattlegroundMgr->ClearSpectatorData();*/
 
-    while (m_IRSocket && !m_IRSocket->IsClosed() && !_queue.empty() && _queue.next(packet))
+    while (m_IRSocket && !m_IRSocket->IsClosed() && !_queue.empty() && ((packet = _queue.front()), _queue.pop(), packet))
     {
         // Handle Packet
         if (packet->GetOpcode() < IR_NUM_MSG_TYPES)
@@ -1924,7 +1827,7 @@ void InterRealmSession::Update(const uint32 diff)
                 IROpcodeHandler* IRopHandle = IRopcodeTable[packet->GetOpcode()];
                 if (!IRopHandle)
                 {
-                    sLog->outError(LOG_FILTER_INTERREALM, "Cannot find handle for the opcode (%u). Skipped packet.",
+                    TC_LOG_ERROR("server.interrealm", "Cannot find handle for the opcode (%u). Skipped packet.",
                     packet->GetOpcode());
                     continue;
                 }
@@ -1932,12 +1835,12 @@ void InterRealmSession::Update(const uint32 diff)
             }
             catch(ByteBufferException &)
             {
-                sLog->outError(LOG_FILTER_INTERREALM, "InterRealmSession ByteBufferException occured while parsing a packet (opcode: %u). Skipped packet.",
+                TC_LOG_ERROR("server.interrealm", "InterRealmSession ByteBufferException occured while parsing a packet (opcode: %u). Skipped packet.",
                     packet->GetOpcode());
             }
             if (packet->rpos() < packet->wpos())
             {
-                sLog->outError(LOG_FILTER_INTERREALM, "Unprocessed tail data (read stop at %u from %u) in opcode %s", packet->rpos(), packet->wpos(), IRopcodeTable[packet->GetOpcode()]->name);
+                TC_LOG_ERROR("server.interrealm", "Unprocessed tail data (read stop at %u from %u) in opcode %s", packet->rpos(), packet->wpos(), IRopcodeTable[packet->GetOpcode()]->name);
             }
         }
         else
@@ -1946,7 +1849,7 @@ void InterRealmSession::Update(const uint32 diff)
         // Delete Packet from memory
         if (packet != NULL)
         {
-            //sLog->outInterRealm(LOG_FILTER_GENERAL, "[INTERREALM] Deleting packet");
+            //TC_LOG_DEBUG("server.interrealm","misc", "[INTERREALM] Deleting packet");
             delete packet;
         }
     }

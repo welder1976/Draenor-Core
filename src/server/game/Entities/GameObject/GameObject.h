@@ -6,8 +6,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef GAMEOBJECT_H
-#define GAMEOBJECT_H
+#ifndef TRINITYCORE_GAMEOBJECT_H
+#define TRINITYCORE_GAMEOBJECT_H
 
 #include "Common.h"
 #include "SharedDefines.h"
@@ -19,13 +19,6 @@
 
 class GameObjectAI;
 class Transport;
-
-// GCC have alternative #pragma pack(N) syntax and old gcc version not support pack(push, N), also any gcc version not support it at some platform
-#if defined(__GNUC__)
-#pragma pack(1)
-#else
-#pragma pack(push, 1)
-#endif
 
 #define MAX_GAMEOBJECT_QUEST_ITEMS 6
 
@@ -453,7 +446,7 @@ struct GameObjectTemplate
         struct
         {
             uint32 InstanceType;                            // 0 Instance Type, enum { Not Instanced, Party Dungeon, Raid Dungeon, PVP Battlefield, Arena Battlefield, Scenario, }; Default: Party Dungeon
-            uint32 DifficultyNormal;                        // 1 Difficulty Normal, References: animationdata, NoValue = 0
+            uint32 DUNGEON_DIFFICULTY_NORMAL;                        // 1 Difficulty Normal, References: animationdata, NoValue = 0
             uint32 DifficultyHeroic;                        // 2 Difficulty Heroic, References: animationdata, NoValue = 0
             uint32 DifficultyEpic;                          // 3 Difficulty Epic, References: animationdata, NoValue = 0
             uint32 DifficultyLegendary;                     // 4 Difficulty Legendary, References: animationdata, NoValue = 0
@@ -852,13 +845,6 @@ union GameObjectValue
     } Building;
 };
 
-// GCC have alternative #pragma pack() syntax and old gcc version not support pack(pop), also any gcc version not support it at some platform
-#if defined(__GNUC__)
-#pragma pack()
-#else
-#pragma pack(pop)
-#endif
-
 struct GameObjectLocale
 {
     StringVector Name;
@@ -978,7 +964,7 @@ class GameObject : public WorldObject, public GridObject<GameObject>, public Map
             // Owner already found and different than expected owner - remove object from old owner
             if (owner && GetOwnerGUID() && GetOwnerGUID() != owner)
             {
-                ASSERT(false);
+                ABORT();
             }
             m_spawnedByDefault = false;                     // all object with owner is despawned after delay
             SetGuidValue(GAMEOBJECT_FIELD_CREATED_BY, owner);

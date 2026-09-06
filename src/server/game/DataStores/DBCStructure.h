@@ -96,7 +96,7 @@ struct AreaTableEntry
     {
         if (ContinentID == 609 || ID == 4522 || ID == 41 || ID == 2401)
             return true;
-        return (Flags & AREA_FLAG_SANCTUARY);
+        return (Flags & AREA_FLAG_SANCTUARY) != 0;
     }
 };
 
@@ -763,7 +763,7 @@ struct ItemSetEntry
 struct LFGDungeonEntry
 {
     uint32  ID;                                             // 0        m_ID
-    //char*     m_NameLang;                                 // 1        m_NameLang
+    char*     name;                                   // 1        m_NameLang
     uint32  minlevel;                                       // 2        m_MinLevel
     uint32  maxlevel;                                       // 3        m_MaxLevel
     uint32  reclevel;                                       // 4        m_TargetLevel
@@ -773,7 +773,7 @@ struct LFGDungeonEntry
     uint32  difficulty;                                     // 8        m_DifficultyID
     uint32  flags;                                          // 9        m_Flags
     uint32  type;                                           // 10       m_TypeID
-    //int32     m_Faction;                                  // 11       m_Faction
+    int32     m_Faction;                                    // 11       m_Faction
     //char*     m_TextureFilename;                          // 12       m_TextureFilename
     uint32  expansion;                                      // 13       m_ExpansionLevel
     //uint32    m_OrderIndex;                               // 14       m_OrderIndex
@@ -1067,8 +1067,8 @@ struct SpellAuraOptionsEntry
     uint32    procChance;                                   // 4        m_procChance
     uint32    procCharges;                                  // 5        m_procCharges
     uint32    procFlags;                                    // 6        m_procTypeMask
-    uint32    InternalCooldown;                             // 7       m_internalCooldown
-    uint32    ProcsPerMinuteEntry;                          // 8       m_procsPerMinuteEntry
+    uint32    InternalCooldown;                             // 7        m_internalCooldown
+    uint32    ProcsPerMinuteEntry;                          // 8        m_procsPerMinuteEntry
 };
 
 struct SpellEntry
@@ -1923,7 +1923,7 @@ struct SpellEffect
 {
     SpellEffect()
     {
-        for (int i = 0; i < Difficulty::MaxDifficulties; i++)
+        for (int i = 0; i < Difficulty::MAX_DIFFICULTY; i++)
         {
             for (int y = 0; y < SpellEffIndex::MAX_EFFECTS; y++)
             {
@@ -1931,7 +1931,7 @@ struct SpellEffect
             }
         }
     }
-    SpellEffectEntry const* effects[Difficulty::MaxDifficulties][32];
+    SpellEffectEntry const* effects[Difficulty::MAX_DIFFICULTY][32];
 };
 
 typedef std::map<uint32, SpellEffect> SpellEffectMap;

@@ -139,38 +139,60 @@ bool PhaseMgr::NeedsPhaseUpdateWithData(PhaseUpdateData const updateData) const
 
 void PhaseMgr::RegisterPhasingAuraEffect(AuraEffect const* auraEffect)
 {
-    PhaseInfo phaseInfo;
+    std::list<PhaseInfo> phases;
 
-    if (auraEffect->GetMiscValue())
+    if (auraEffect->GetAuraType() == SPELL_AURA_PHASE)
     {
-        _UpdateFlags |= PHASE_UPDATE_FLAG_SERVERSIDE_CHANGED;
-        phaseInfo.phasemask = auraEffect->GetMiscValue();
-    }
-    else
-    {
-        SpellPhaseStore::const_iterator itr = _SpellPhaseStore->find(auraEffect->GetId());
-        if (itr != _SpellPhaseStore->end())
+        PhaseInfo phaseInfo;
+
+        if (auraEffect->GetMiscValue())
         {
-            if (itr->second.phasemask)
-            {
-                _UpdateFlags |= PHASE_UPDATE_FLAG_SERVERSIDE_CHANGED;
-                phaseInfo.phasemask = itr->second.phasemask;
-            }
-
-            if (itr->second.terrainswapmap)
-                phaseInfo.terrainswapmap = itr->second.terrainswapmap;
-
-			if (itr->second.worldmaparea)
-				phaseInfo.worldmaparea = itr->second.worldmaparea;
+            _UpdateFlags |= PHASE_UPDATE_FLAG_SERVERSIDE_CHANGED;
+            phaseInfo.phasemask = auraEffect->GetMiscValue();
         }
+        else
+        {
+            SpellPhaseStore::const_iterator itr = _SpellPhaseStore->find(auraEffect->GetId());
+            if (itr != _SpellPhaseStore->end())
+            {
+                if (itr->second.phasemask)
+                {
+                    _UpdateFlags |= PHASE_UPDATE_FLAG_SERVERSIDE_CHANGED;
+                    phaseInfo.phasemask = itr->second.phasemask;
+                }
+
+				if (itr->second.terrainswapmap)
+					phaseInfo.terrainswapmap = itr->second.terrainswapmap;
+
+				if (itr->second.worldmaparea)
+					phaseInfo.worldmaparea = itr->second.worldmaparea;
+            }
+        }
+
+
+		phaseInfo.phaseId = auraEffect->GetMiscValueB();
+
+		if (phaseInfo.NeedsClientSideUpdate())
+			_UpdateFlags |= PHASE_UPDATE_FLAG_CLIENTSIDE_CHANGED;
+
+        phases.push_back(phaseInfo);
+    }
+    else if (auraEffect->GetAuraType() == SPELL_AURA_PHASE_GROUP)
+    {
+        uint32 group = auraEffect->GetMiscValueB();
+        //std::set<uint32> const& groupPhases = GetPhasesForGroup(group);
+        //for (auto itr = groupPhases.begin(); itr != groupPhases.end(); ++itr)
+        //{
+           // PhaseInfo phaseInfo;
+            //phaseInfo.phaseId = auraEffect->GetMiscValueB();
+           // if (phaseInfo.NeedsClientSideUpdate())
+                //_UpdateFlags |= PHASE_UPDATE_FLAG_CLIENTSIDE_CHANGED;
+           // phases.push_back(phaseInfo);
+       // }
     }
 
-    phaseInfo.phaseId = auraEffect->GetMiscValueB();
-
-    if (phaseInfo.NeedsClientSideUpdate())
-        _UpdateFlags |= PHASE_UPDATE_FLAG_CLIENTSIDE_CHANGED;
-
-    phaseData.AddAuraInfo(auraEffect->GetId(), phaseInfo);
+    for (auto itr = phases.begin(); itr != phases.end(); ++itr)
+        phaseData.AddAuraInfo(auraEffect->GetId(), *itr);
 
     Update();
 }
@@ -230,9 +252,14 @@ void PhaseData::GetActivePhases(std::set<uint32>& phases) const
 {
 	// Phases from Auras.
 	if (!spellPhaseInfo.empty())
-		for (PhaseInfoContainer::const_iterator l_IT = spellPhaseInfo.begin(); l_IT != spellPhaseInfo.end(); ++l_IT)
-			if (l_IT->second.phaseId)
-				phases.insert(l_IT->second.phaseId);
+        for (PhaseInfoContainer::const_iterator phaseInfoContainer = spellPhaseInfo.begin(); phaseInfoContainer != spellPhaseInfo.end(); ++phaseInfoContainer)
+        {
+            for (auto itr = phaseInfoContainer->second.begin(); itr != phaseInfoContainer->second.end(); ++itr)
+            {
+                if (itr->phaseId)
+                    phases.insert(itr->phaseId);
+            }
+        }
 
 	// Phase definitions from DB.
 	if (!activePhaseDefinitions.empty())
@@ -278,15 +305,18 @@ void PhaseData::SendPhaseshiftToPlayer()
 	std::set<uint32> l_TerrainSwaps;
 	std::set<uint32> l_InactiveTerrainSwap;
 
-	for (PhaseInfoContainer::const_iterator l_IT = spellPhaseInfo.begin(); l_IT != spellPhaseInfo.end(); ++l_IT)
+	for (PhaseInfoContainer::const_iterator phaseInfoContainer = spellPhaseInfo.begin(); phaseInfoContainer != spellPhaseInfo.end(); ++phaseInfoContainer)
 	{
-		if (l_IT->second.terrainswapmap)
-			l_TerrainSwaps.insert(l_IT->second.terrainswapmap);
+        for (auto itr = phaseInfoContainer->second.begin(); itr != phaseInfoContainer->second.end(); ++itr)
+        {
+            if (itr->terrainswapmap)
+                l_TerrainSwaps.insert(itr->terrainswapmap);
 
-		if (l_IT->second.phaseId)
-			l_PhaseIDs.insert(l_IT->second.phaseId);
+            if (itr->phaseId)
+                l_PhaseIDs.insert(itr->phaseId);
+        }
 	}
-
+	
 	// Phase Definitions
 	for (std::list<PhaseDefinition const*>::const_iterator l_IT = activePhaseDefinitions.begin(); l_IT != activePhaseDefinitions.end(); ++l_IT)
 	{
@@ -342,7 +372,7 @@ void PhaseData::AddAuraInfo(uint32 const spellId, PhaseInfo phaseInfo)
     if (phaseInfo.phasemask)
         _PhasemaskThroughAuras |= phaseInfo.phasemask;
 
-    spellPhaseInfo[spellId] = phaseInfo;
+    spellPhaseInfo[spellId].push_back(phaseInfo);
 }
 
 uint32 PhaseData::RemoveAuraInfo(uint32 const spellId)
@@ -350,21 +380,31 @@ uint32 PhaseData::RemoveAuraInfo(uint32 const spellId)
     PhaseInfoContainer::const_iterator rAura = spellPhaseInfo.find(spellId);
     if (rAura != spellPhaseInfo.end())
     {
+        bool serverUpdated = false;
+        bool clientUpdated = false;
         uint32 updateflag = 0;
 
-        if (rAura->second.NeedsClientSideUpdate())
-            updateflag |= PHASE_UPDATE_FLAG_CLIENTSIDE_CHANGED;
-
-        if (rAura->second.NeedsServerSideUpdate())
+        for (auto phase = rAura->second.begin(); phase != rAura->second.end(); ++phase)
         {
-            _PhasemaskThroughAuras = 0;
+            if (!clientUpdated && phase->NeedsClientSideUpdate())
+            {
+                clientUpdated = true;
+                updateflag |= PHASE_UPDATE_FLAG_CLIENTSIDE_CHANGED;
+            }
 
-            updateflag |= PHASE_UPDATE_FLAG_SERVERSIDE_CHANGED;
+            if (!serverUpdated && phase->NeedsServerSideUpdate())
+            {
+                serverUpdated = true;
+                _PhasemaskThroughAuras = 0;
 
-            spellPhaseInfo.erase(rAura);
+                updateflag |= PHASE_UPDATE_FLAG_SERVERSIDE_CHANGED;
 
-            for (PhaseInfoContainer::const_iterator itr = spellPhaseInfo.begin(); itr != spellPhaseInfo.end(); ++itr)
-                _PhasemaskThroughAuras |= itr->second.phasemask;
+				spellPhaseInfo.erase(rAura);
+
+                for (PhaseInfoContainer::const_iterator itr = spellPhaseInfo.begin(); itr != spellPhaseInfo.end(); ++itr)
+                    for (auto ph = itr->second.begin(); ph != itr->second.end(); ++ph)
+                        _PhasemaskThroughAuras |= ph->phasemask;
+            }
         }
 
         return updateflag;
@@ -411,7 +451,7 @@ bool PhaseMgr::IsConditionTypeSupported(ConditionTypes const conditionType)
         case CONDITION_TEAM:
         case CONDITION_CLASS:
         case CONDITION_RACE:
-        case CONDITION_INSTANCE_DATA:
+        case CONDITION_INSTANCE_INFO:
         case CONDITION_LEVEL:
             return true;
         default:

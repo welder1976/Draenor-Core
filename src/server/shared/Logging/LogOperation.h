@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -15,9 +15,8 @@ struct LogMessage;
 class LogOperation
 {
     public:
-        LogOperation(Logger* _logger, LogMessage* _msg)
-            : logger(_logger)
-            , msg(_msg)
+        LogOperation(Logger const* _logger, LogMessage* _msg)
+            : logger(_logger), msg(_msg)
         { }
 
         ~LogOperation();
@@ -25,7 +24,7 @@ class LogOperation
         int call();
 
     protected:
-        Logger *logger;
+        Logger const* logger;
         LogMessage *msg;
 };
 

@@ -77,12 +77,6 @@ public:
 
 		void HandleLogIn(SpellEffIndex /*effIndex*/)
 		{
-			// Reset Checks
-			if (Unit* caster = GetCaster())
-			{
-				caster->m_cloudStacks = 0;
-			}
-
 			if (Player* player = GetCaster()->ToPlayer())
 			{
 				// Vengeance of Elune
@@ -335,8 +329,8 @@ class spell_gen_cannibalize: public SpellScriptLoader
                 float max_range = GetSpellInfo()->GetMaxRange(false);
                 WorldObject* result = NULL;
                 // search for nearby enemy corpse in range
-                JadeCore::AnyDeadUnitSpellTargetInRangeCheck check(caster, max_range, GetSpellInfo(), TARGET_CHECK_ENEMY);
-                JadeCore::WorldObjectSearcher<JadeCore::AnyDeadUnitSpellTargetInRangeCheck> searcher(caster, result, check);
+                Trinity::AnyDeadUnitSpellTargetInRangeCheck check(caster, max_range, GetSpellInfo(), TARGET_CHECK_ENEMY);
+                Trinity::WorldObjectSearcher<Trinity::AnyDeadUnitSpellTargetInRangeCheck> searcher(caster, result, check);
                 caster->GetMap()->VisitFirstFound(caster->m_positionX, caster->m_positionY, max_range, searcher);
                 if (!result)
                     return SPELL_FAILED_NO_EDIBLE_CORPSES;
@@ -459,7 +453,7 @@ class spell_gen_pet_summoned: public SpellScriptLoader
 
                             auto l_QueryHolderResultFuture = CharacterDatabase.DelayQueryHolder(l_PetHolder);
 
-                            sWorld->AddQueryHolderCallback(QueryHolderCallback(l_QueryHolderResultFuture, [l_NewPet, l_PlayerGUID, l_PetNumber](SQLQueryHolder* p_QueryHolder) -> void
+                            sWorld->AddQueryHolderCallback(QueryHolderCallback(std::move(l_QueryHolderResultFuture), [l_NewPet, l_PlayerGUID, l_PetNumber](SQLQueryHolder* p_QueryHolder) -> void
                             {
                                 Player* l_Player = sObjectAccessor->FindPlayer(l_PlayerGUID);
                                 if (!l_Player || !p_QueryHolder)
@@ -1587,10 +1581,12 @@ class spell_gen_luck_of_the_draw: public SpellScriptLoader
 
             void Update(AuraEffect* /*effect*/)
             {
+                uint32 newQueueId = 0;
+
                 if (Player* owner = GetUnitOwner()->ToPlayer())
                 {
-                    const LfgDungeonSet dungeons = sLFGMgr->GetSelectedDungeons(owner->GetGUID());
-                    LfgDungeonSet::const_iterator itr = dungeons.begin();
+                    std::set<uint32> dungeons = sLFGMgr->GetSelectedDungeons(owner->GetGUID(), newQueueId);
+                    std::set<uint32>::const_iterator itr = dungeons.begin();
 
                     if (itr == dungeons.end())
                     {
@@ -1606,7 +1602,7 @@ class spell_gen_luck_of_the_draw: public SpellScriptLoader
                                 if (uint32 dungeonId = sLFGMgr->GetDungeon(group->GetGUID(), true))
                                     if (LFGDungeonEntry const* dungeon = sLFGDungeonStore.LookupEntry(dungeonId))
                                         if (uint32(dungeon->map) == map->GetId() && dungeon->difficulty == uint32(map->GetDifficultyID()))
-                                            if (randomDungeon && randomDungeon->type == TYPEID_RANDOM_DUNGEON)
+                                            if (randomDungeon && randomDungeon->type == LFG_TYPE_RANDOM)
                                                 return; // in correct dungeon
 
                     Remove(AURA_REMOVE_BY_DEFAULT);
@@ -4272,8 +4268,8 @@ class spell_taunt_flag_targeting : public SpellScriptLoader
                     float l_SearchDist = GetSpellInfo()->Effects[SpellEffIndex::EFFECT_0].CalcRadius(l_Caster);
 
                     std::list<WorldObject*> l_Targets;
-                    JadeCore::AllWorldObjectsInRange l_Check(l_Caster, l_SearchDist);
-                    JadeCore::WorldObjectListSearcher<JadeCore::AllWorldObjectsInRange> l_Searcher(l_Caster, l_Targets, l_Check);
+                    Trinity::AllWorldObjectsInRange l_Check(l_Caster, l_SearchDist);
+                    Trinity::WorldObjectListSearcher<Trinity::AllWorldObjectsInRange> l_Searcher(l_Caster, l_Targets, l_Check);
                     l_Caster->VisitNearbyObject(l_SearchDist, l_Searcher);
 
                     Position l_CasterPos;
@@ -4423,7 +4419,7 @@ class spell_gen_raid_buff_stack : public SpellScriptLoader
                 for (uint8 l_Idx = 0; l_Idx < l_TabAuraSize; ++l_Idx)
                 {
                     if (GetSpellInfo()->Id != l_TabAura[l_Idx])
-                        p_Targets.remove_if(JadeCore::UnitAuraCheck(true, l_TabAura[l_Idx]));
+                        p_Targets.remove_if(Trinity::UnitAuraCheck(true, l_TabAura[l_Idx]));
                 }
             }
 
@@ -5895,8 +5891,8 @@ public:
 			if (Unit* caster = GetCaster())
 			{
 				std::list<Unit*> targets;
-				JadeCore::AnyUnitInObjectRangeCheck u_check(caster, 300.0f);
-				JadeCore::UnitListSearcher<JadeCore::AnyUnitInObjectRangeCheck> searcher(caster, targets, u_check);
+				Trinity::AnyUnitInObjectRangeCheck u_check(caster, 300.0f);
+				Trinity::UnitListSearcher<Trinity::AnyUnitInObjectRangeCheck> searcher(caster, targets, u_check);
 				caster->VisitNearbyObject(300.0f, searcher);
 				for (std::list<Unit*>::const_iterator itr = targets.begin(); itr != targets.end(); ++itr)
 				{
@@ -6072,8 +6068,8 @@ public:
 				if (caster->GetTypeId() == TYPEID_PLAYER)
 				{
 					std::list<Unit*> targets;
-					JadeCore::AnyFriendlyUnitInObjectRangeCheck u_check(caster, caster, 500.0f);
-					JadeCore::UnitListSearcher<JadeCore::AnyFriendlyUnitInObjectRangeCheck> searcher(caster, targets, u_check);
+					Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(caster, caster, 500.0f);
+					Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(caster, targets, u_check);
 					caster->VisitNearbyObject(500.0f, searcher);
 					for (std::list<Unit*>::const_iterator itr = targets.begin(); itr != targets.end(); ++itr)
 					{

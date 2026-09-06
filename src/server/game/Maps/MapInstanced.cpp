@@ -16,7 +16,7 @@
 #include "World.h"
 #include "Group.h"
 
-MapInstanced::MapInstanced(uint32 id, time_t expiry) : Map(id, expiry, 0, DifficultyNormal)
+MapInstanced::MapInstanced(uint32 id, time_t expiry) : Map(id, expiry, 0, DUNGEON_DIFFICULTY_NORMAL)
 {
     // initialize instanced maps list
     m_InstancedMaps.clear();
@@ -181,20 +181,20 @@ Map* MapInstanced::CreateInstanceForPlayer(const uint32 mapId, Player* player)
 InstanceMap* MapInstanced::CreateInstance(uint32 InstanceId, InstanceSave* save, Difficulty difficulty)
 {
     // load/create a map
-    TRINITY_GUARD(ACE_Thread_Mutex, Lock);
+    std::lock_guard<std::mutex> lock(_mapLock);
 
     // make sure we have a valid map id
     const MapEntry* entry = sMapStore.LookupEntry(GetId());
     if (!entry)
     {
-        sLog->outError(LOG_FILTER_MAPS, "CreateInstance: no entry for map %d", GetId());
-        ASSERT(false);
+        TC_LOG_ERROR("maps", "CreateInstance: no entry for map %d", GetId());
+        ABORT();
     }
     const InstanceTemplate* iTemplate = sObjectMgr->GetInstanceTemplate(GetId());
     if (!iTemplate)
     {
-        sLog->outError(LOG_FILTER_MAPS, "CreateInstance: no instance template for map %d", GetId());
-        ASSERT(false);
+        TC_LOG_ERROR("maps", "CreateInstance: no instance template for map %d", GetId());
+        ABORT();
     }
 
     // some instances only have one difficulty
@@ -204,7 +204,7 @@ InstanceMap* MapInstanced::CreateInstance(uint32 InstanceId, InstanceSave* save,
         if (entry->MaxPlayers == 40)
             difficulty = Difficulty40;
 
-    sLog->outDebug(LOG_FILTER_MAPS, "MapInstanced::CreateInstance: %s map instance %d for %d created with difficulty %s", save ? "" :"new ", InstanceId, GetId(), (difficulty == DifficultyHeroic || difficulty == Difficulty10HC || difficulty == Difficulty25HC) ? "heroic" : "normal");
+    TC_LOG_DEBUG("maps", "MapInstanced::CreateInstance: %s map instance %d for %d created with difficulty %s", save ? "" :"new ", InstanceId, GetId(), (difficulty == DUNGEON_DIFFICULTY_HEROIC || difficulty == RAID_DIFFICULTY_10MAN_HEROIC || difficulty == RAID_DIFFICULTY_25MAN_HEROIC) ? "heroic" : "normal");
 
     InstanceMap* map = new InstanceMap(GetId(), GetGridExpiry(), InstanceId, difficulty, this);
     ASSERT(map->IsDungeon());
@@ -221,18 +221,18 @@ InstanceMap* MapInstanced::CreateInstance(uint32 InstanceId, InstanceSave* save,
 BattlegroundMap* MapInstanced::CreateBattleground(uint32 InstanceId, Battleground* bg)
 {
     // load/create a map
-    TRINITY_GUARD(ACE_Thread_Mutex, Lock);
+    std::lock_guard<std::mutex> lock(_mapLock);
 
-    sLog->outDebug(LOG_FILTER_MAPS, "MapInstanced::CreateBattleground: map bg %d for %d created.", InstanceId, GetId());
+    TC_LOG_DEBUG("maps", "MapInstanced::CreateBattleground: map bg %d for %d created.", InstanceId, GetId());
 
     MS::Battlegrounds::Bracket const* bracketEntry = MS::Battlegrounds::Brackets::FindForLevel(bg->GetMinLevel());
 
     uint8 spawnMode;
 
     if (bracketEntry)
-        spawnMode = DifficultyNormal; // bracketEntry->difficulty;
+        spawnMode = DUNGEON_DIFFICULTY_NORMAL; // bracketEntry->difficulty;
     else
-        spawnMode = DifficultyNormal;
+        spawnMode = DUNGEON_DIFFICULTY_NORMAL;
 
     BattlegroundMap* map = new BattlegroundMap(GetId(), GetGridExpiry(), InstanceId, this, spawnMode);
     ASSERT(map->IsBattlegroundOrArena());
@@ -278,6 +278,6 @@ bool MapInstanced::DestroyInstance(InstancedMaps::iterator &itr)
 
 bool MapInstanced::CanEnter(Player* /*player*/)
 {
-    //ASSERT(false);
+    //ABORT();
     return true;
 }

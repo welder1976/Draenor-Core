@@ -44,7 +44,7 @@ bool WorldSession::processChatmessageFurtherAfterSecurityChecks(std::string& msg
         if (sWorld->getIntConfig(CONFIG_CHAT_STRICT_LINK_CHECKING_SEVERITY) && AccountMgr::IsPlayerAccount(GetSecurity())
                 && !ChatHandler(this).isValidChatMessage(msg.c_str()))
         {
-            sLog->outError(LOG_FILTER_NETWORKIO, "Player %s (GUID: %u) sent a chatmessage with an invalid link: %s", GetPlayer()->GetName(),
+            TC_LOG_ERROR("network", "Player %s (GUID: %u) sent a chatmessage with an invalid link: %s", GetPlayer()->GetName(),
                     GetPlayer()->GetGUIDLow(), msg.c_str());
 #ifndef CROSS
             if (sWorld->getIntConfig(CONFIG_CHAT_STRICT_LINK_CHECKING_KICK))
@@ -101,21 +101,21 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& p_RecvData)
             l_Type = CHAT_MSG_RAID_WARNING;
             break;
         default:
-            sLog->outError(LOG_FILTER_NETWORKIO, "HandleMessagechatOpcode : Unknown chat opcode (%u)", p_RecvData.GetOpcode());
+            TC_LOG_ERROR("network", "HandleMessagechatOpcode : Unknown chat opcode (%u)", p_RecvData.GetOpcode());
             p_RecvData.hexlike();
             return;
     }
 
     if (l_Type >= MAX_CHAT_MSG_TYPE)
     {
-        sLog->outError(LOG_FILTER_NETWORKIO, "CHAT: Wrong message type received: %u", l_Type);
+        TC_LOG_ERROR("network", "CHAT: Wrong message type received: %u", l_Type);
         p_RecvData.rfinish();
         return;
     }
 
     Player * l_Sender = GetPlayer();
 
-    //sLog->outDebug(LOG_FILTER_GENERAL, "CHAT: packet received. type %u, lang %u", type, lang);
+    //TC_LOG_DEBUG("misc", "CHAT: packet received. type %u, lang %u", type, lang);
 
     /// no language sent with emote packet.
     if (l_Type != CHAT_MSG_EMOTE && l_Type != CHAT_MSG_AFK && l_Type != CHAT_MSG_DND)
@@ -206,7 +206,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& p_RecvData)
                         case CHAT_MSG_RAID_LEADER:
                         case CHAT_MSG_RAID_WARNING:
                             // allow two side chat at group channel if two side group allowed
-                            if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP))
+                            if (sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP) && sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_LFG))
                                 l_Language = LANG_UNIVERSAL;
                             break;
                         case CHAT_MSG_GUILD:
@@ -610,7 +610,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket& p_RecvData)
             break;
         }
         default:
-            sLog->outError(LOG_FILTER_NETWORKIO, "CHAT: unknown message type %u, lang: %u", l_Type, l_Language);
+            TC_LOG_ERROR("network", "CHAT: unknown message type %u, lang: %u", l_Type, l_Language);
             break;
     }
 }
@@ -641,7 +641,7 @@ void WorldSession::HandleAddonMessagechatOpcode(WorldPacket& p_RecvData)
             l_Type = CHAT_MSG_WHISPER;
             break;
         default:
-            sLog->outError(LOG_FILTER_NETWORKIO, "HandleAddonMessagechatOpcode: Unknown addon chat opcode (%u)", p_RecvData.GetOpcode());
+            TC_LOG_ERROR("network", "HandleAddonMessagechatOpcode: Unknown addon chat opcode (%u)", p_RecvData.GetOpcode());
             p_RecvData.hexlike();
             return;
     }
@@ -749,7 +749,7 @@ void WorldSession::HandleAddonMessagechatOpcode(WorldPacket& p_RecvData)
         }
         default:
         {
-            sLog->outError(LOG_FILTER_GENERAL, "HandleAddonMessagechatOpcode: unknown addon message type %u", l_Type);
+            TC_LOG_ERROR("server.worldserver", "HandleAddonMessagechatOpcode: unknown addon message type %u", l_Type);
             break;
         }
     }
@@ -775,7 +775,7 @@ void WorldSession::HandleEmoteOpcode(WorldPacket & p_RecvData)
     GetPlayer()->HandleEmoteCommand(0);
 }
 
-namespace JadeCore
+namespace Trinity
 {
     class EmoteChatBuilder
     {
@@ -804,7 +804,7 @@ namespace JadeCore
             uint32        m_EmoteNum;
             Unit const*   m_Target;
     };
-}                                                           // namespace JadeCore
+}                                                           // namespace Trinity
 
 void WorldSession::HandleTextEmoteOpcode(WorldPacket & p_RecvData)
 {
@@ -854,15 +854,15 @@ void WorldSession::HandleTextEmoteOpcode(WorldPacket & p_RecvData)
 
     Unit* unit = ObjectAccessor::GetUnit(*m_Player, l_Target);
 
-    CellCoord p = JadeCore::ComputeCellCoord(GetPlayer()->GetPositionX(), GetPlayer()->GetPositionY());
+    CellCoord p = Trinity::ComputeCellCoord(GetPlayer()->GetPositionX(), GetPlayer()->GetPositionY());
 
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::EmoteChatBuilder emote_builder(*GetPlayer(), l_EmoteAnim, l_Emote, unit);
-    JadeCore::LocalizedPacketDo<JadeCore::EmoteChatBuilder > emote_do(emote_builder);
-    JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::EmoteChatBuilder > > emote_worker(GetPlayer(), sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_TEXTEMOTE), emote_do);
-    TypeContainerVisitor<JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::EmoteChatBuilder> >, WorldTypeMapContainer> message(emote_worker);
+    Trinity::EmoteChatBuilder emote_builder(*GetPlayer(), l_EmoteAnim, l_Emote, unit);
+    Trinity::LocalizedPacketDo<Trinity::EmoteChatBuilder > emote_do(emote_builder);
+    Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::EmoteChatBuilder > > emote_worker(GetPlayer(), sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_TEXTEMOTE), emote_do);
+    TypeContainerVisitor<Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::EmoteChatBuilder> >, WorldTypeMapContainer> message(emote_worker);
     cell.Visit(p, message, *GetPlayer()->GetMap(), *GetPlayer(), sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_TEXTEMOTE));
 
     GetPlayer()->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_DO_EMOTE, l_Emote, 0, 0, unit);
@@ -874,7 +874,7 @@ void WorldSession::HandleTextEmoteOpcode(WorldPacket & p_RecvData)
 
 void WorldSession::HandleChannelDeclineInvite(WorldPacket & p_Packet)
 {
-    sLog->outDebug(LOG_FILTER_NETWORKIO, "Opcode %u", p_Packet.GetOpcode());
+    TC_LOG_DEBUG("network", "Opcode %u", p_Packet.GetOpcode());
 }
 
 void WorldSession::SendPlayerNotFoundNotice(std::string p_Name)

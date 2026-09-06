@@ -277,7 +277,7 @@ class boss_lady_deathwhisper : public CreatureScript
                 events.ScheduleEvent(EVENT_P1_SUMMON_WAVE, 7000, 0, PHASE_ONE);
                 events.ScheduleEvent(EVENT_P1_SHADOW_BOLT, urand(5500, 6000), 0, PHASE_ONE);
                 events.ScheduleEvent(EVENT_P1_EMPOWER_CULTIST, urand(20000, 30000), 0, PHASE_ONE);
-                if (GetDifficulty() != Difficulty::Difficulty10N)
+                if (GetDifficulty() != Difficulty::RAID_DIFFICULTY_10MAN_NORMAL)
                     events.ScheduleEvent(EVENT_DOMINATE_MIND_H, 30000);
 
                 Talk(SAY_AGGRO);
@@ -608,7 +608,7 @@ class boss_lady_deathwhisper : public CreatureScript
                     return;
 
                 // select random cultist
-                Creature* cultist = JadeCore::Containers::SelectRandomContainerElement(temp);
+                Creature* cultist = Trinity::Containers::SelectRandomContainerElement(temp);
                 DoCast(cultist, cultist->GetEntry() == NPC_CULT_FANATIC ? SPELL_DARK_TRANSFORMATION_T : SPELL_DARK_EMPOWERMENT_T, true);
                 Talk(uint8(cultist->GetEntry() == NPC_CULT_FANATIC ? SAY_DARK_TRANSFORMATION : SAY_DARK_EMPOWERMENT));
             }

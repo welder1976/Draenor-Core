@@ -9,11 +9,19 @@
 #ifndef _BYTEBUFFER_H
 #define _BYTEBUFFER_H
 
-#include "Common.h"
-#include "Debugging/Errors.h"
-#include "Log.h"
-#include "Utilities/ByteConverter.h"
+#include "Define.h"
+#include "Errors.h"
+#include "ByteConverter.h"
+#include "Util.h"
+
+#include <exception>
+#include <list>
+#include <map>
+#include <string>
+#include <vector>
+#include <cstring>
 #include "Guid.h"
+#include "MessageBuffer.h"
 #include <G3D/Vector2.h>
 #include <G3D/Vector3.h>
 
@@ -22,6 +30,8 @@
 struct ObjectGuid
 {
     public:
+        using LowType = uint32;
+
         ObjectGuid() { _data.u64 = 0LL; }
         ObjectGuid(uint64 guid) { _data.u64 = guid; }
         ObjectGuid(ObjectGuid const& other) { _data.u64 = other._data.u64; }
@@ -53,6 +63,11 @@ struct ObjectGuid
             return _data.u64;
         }
 
+        operator uint64() const
+        {
+            return _data.u64;
+        }
+
         ObjectGuid& operator=(uint64 guid)
         {
             _data.u64 = guid;
@@ -72,8 +87,19 @@ struct ObjectGuid
 
         bool IsEmpty() const
         {
-            return bool(_data.u64);
+            return _data.u64 == 0;
         }
+
+        template<HighGuid high>
+        static ObjectGuid Create(uint64 low, uint64 entry = 0)
+        {
+            return ObjectGuid(MAKE_NEW_GUID(low, entry, uint64(high)));
+        }
+
+        uint64 GetRawValue() const { return _data.u64; }
+        uint32 GetCounter() const { return GUID_LOPART(_data.u64); }
+
+        static ObjectGuid const Empty;
 
     private:
         union
@@ -83,28 +109,30 @@ struct ObjectGuid
         } _data;
 };
 
-class ByteBufferException
+class ByteBufferException : public std::exception
 {
     public:
+        ByteBufferException() : Pos(0), Size(0), ValueSize(0) { }
         ByteBufferException(size_t pos, size_t size, size_t valueSize)
             : Pos(pos), Size(size), ValueSize(valueSize)
         {
         }
 
+        std::string& message() { return _message; }
+        std::string const& message() const { return _message; }
+        char const* what() const noexcept override { return _message.c_str(); }
+
     protected:
         size_t Pos;
         size_t Size;
         size_t ValueSize;
+        std::string _message;
 };
 
 class ByteBufferPositionException : public ByteBufferException
 {
     public:
-        ByteBufferPositionException(bool add, size_t pos, size_t size, size_t valueSize)
-        : ByteBufferException(pos, size, valueSize), _add(add)
-        {
-            PrintError();
-        }
+        ByteBufferPositionException(bool add, size_t pos, size_t size, size_t valueSize);
 
     protected:
         void PrintError() const
@@ -112,7 +140,7 @@ class ByteBufferPositionException : public ByteBufferException
 #ifdef DEBUG
             ACE_Stack_Trace trace;
 
-            sLog->outError(LOG_FILTER_GENERAL, "Attempted to %s value with size: " SIZEFMTD " in ByteBuffer (pos: " SIZEFMTD " size: " SIZEFMTD ")\n[Stack trace: %s]" ,
+            TC_LOG_ERROR("server.worldserver", "Attempted to %s value with size: %zu in ByteBuffer (pos: %zu size: %zu)\n[Stack trace: %s]" ,
                 (_add ? "put" : "get"), ValueSize, Pos, Size, trace.c_str());
 #endif
         }
@@ -124,11 +152,7 @@ class ByteBufferPositionException : public ByteBufferException
 class ByteBufferSourceException : public ByteBufferException
 {
     public:
-        ByteBufferSourceException(size_t pos, size_t size, size_t valueSize)
-        : ByteBufferException(pos, size, valueSize)
-        {
-            PrintError();
-        }
+        ByteBufferSourceException(size_t pos, size_t size, size_t valueSize);
 
     protected:
         void PrintError() const
@@ -136,7 +160,7 @@ class ByteBufferSourceException : public ByteBufferException
 #ifdef DEBUG
             ACE_Stack_Trace trace;
 
-            sLog->outError(LOG_FILTER_GENERAL, "Attempted to put a %s in ByteBuffer (pos: " SIZEFMTD " size: " SIZEFMTD ")\n[Stack trace: %s]",
+            TC_LOG_ERROR("server.worldserver", "Attempted to put a %s in ByteBuffer (pos: %zu size: %zu)\n[Stack trace: %s]",
                 (ValueSize > 0 ? "NULL-pointer" : "zero-sized value"), Pos, Size, trace.c_str());
 #endif
         }
@@ -291,6 +315,16 @@ class ByteBuffer
             m_BaseSize = reserve;
         }
 
+#ifndef CROSS
+        explicit ByteBuffer(MessageBuffer&& buffer) : _rpos(0), _wpos(0), _wbitpos(8), _rbitpos(8), _curbitval(0), _storage(buffer.Move())
+#else
+        explicit ByteBuffer(MessageBuffer&& buffer) : _rpos(0), _wpos(0), _wbitpos(8), _rbitpos(8), _curbitval(0), _storage(buffer.Move()), isTunneled(false)
+#endif
+        {
+            _wpos = _storage.size();
+            m_BaseSize = _storage.size();
+        }
+
         // copy constructor
         ByteBuffer(const ByteBuffer &buf) : _rpos(buf._rpos), _wpos(buf._wpos),
 #ifndef CROSS
@@ -339,6 +373,11 @@ class ByteBuffer
         void ResetBitReading()
         {
             _rbitpos = 8;
+        }
+
+        void ResetBitPos()
+        {
+            ResetBitReading();
         }
 
         void FlushBits()
@@ -420,7 +459,7 @@ class ByteBuffer
 
             /// Needed for the msvc 2013 support
 #ifdef _MSC_VER
-            return uint32(mktime(&l_Time) + _timezone);
+            return uint32(mktime(&l_Time));
 #else
             return uint32(mktime(&l_Time) + timezone);
 #endif
@@ -462,6 +501,87 @@ class ByteBuffer
             EndianConvert(value);
             put(pos, (uint8 *)&value, sizeof(value));
         }
+
+        void ReadGuidMaskList(ObjectGuid& guid, int count, ...)
+        {
+            va_list ap;
+            va_start(ap, count);
+            for (uint8 i = 0; i < count; ++i)
+            {
+                uint8 offset = va_arg(ap, uint32);
+                guid[offset] = ReadBit();
+            }
+            va_end(ap);
+        }
+        void ReadGuidMask(ObjectGuid& guid, uint8 v1) { ReadGuidMaskList(guid, 1, v1); }
+        void ReadGuidMask(ObjectGuid& guid, uint8 v1, uint8 v2) { ReadGuidMaskList(guid, 2, v1, v2); }
+        void ReadGuidMask(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3) { ReadGuidMaskList(guid, 3, v1, v2, v3); }
+        void ReadGuidMask(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4) { ReadGuidMaskList(guid, 4, v1, v2, v3, v4); }
+        void ReadGuidMask(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5) { ReadGuidMaskList(guid, 5, v1, v2, v3, v4, v5); }
+        void ReadGuidMask(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6) { ReadGuidMaskList(guid, 6, v1, v2, v3, v4, v5, v6); }
+        void ReadGuidMask(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6, uint8 v7) { ReadGuidMaskList(guid, 7, v1, v2, v3, v4, v5, v6, v7); }
+        void ReadGuidMask(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6, uint8 v7, uint8 v8) { ReadGuidMaskList(guid, 8, v1, v2, v3, v4, v5, v6, v7, v8); }
+
+        void WriteGuidMaskList(const ObjectGuid& guid, int count, ...)
+        {
+            va_list ap;
+            va_start(ap, count);
+            for (uint8 i = 0; i < count; ++i)
+            {
+                uint8 offset = va_arg(ap, uint32);
+                WriteBit(guid[offset]);
+            }
+            va_end(ap);
+        }
+
+        void WriteGuidMask(const ObjectGuid& guid, uint8 v1) { WriteGuidMaskList(guid, 1, v1); }
+        void WriteGuidMask(const ObjectGuid& guid, uint8 v1, uint8 v2) { WriteGuidMaskList(guid, 2, v1, v2); }
+        void WriteGuidMask(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3) { WriteGuidMaskList(guid, 3, v1, v2, v3); }
+        void WriteGuidMask(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4) { WriteGuidMaskList(guid, 4, v1, v2, v3, v4); }
+        void WriteGuidMask(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5) { WriteGuidMaskList(guid, 5, v1, v2, v3, v4, v5); }
+        void WriteGuidMask(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6) { WriteGuidMaskList(guid, 6, v1, v2, v3, v4, v5, v6); }
+        void WriteGuidMask(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6, uint8 v7) { WriteGuidMaskList(guid, 7, v1, v2, v3, v4, v5, v6, v7); }
+        void WriteGuidMask(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6, uint8 v7, uint8 v8) { WriteGuidMaskList(guid, 8, v1, v2, v3, v4, v5, v6, v7, v8); }
+
+        void ReadGuidBytesList(ObjectGuid& guid, int count, ...)
+        {
+            va_list ap;
+            va_start(ap, count);
+            for (uint8 i = 0; i < count; ++i)
+            {
+                uint8 offset = va_arg(ap, uint32);
+                ReadByteSeq(guid[offset]);
+            }
+            va_end(ap);
+        }
+        void ReadGuidBytes(ObjectGuid& guid, uint8 v1) { ReadGuidBytesList(guid, 1, v1); }
+        void ReadGuidBytes(ObjectGuid& guid, uint8 v1, uint8 v2) { ReadGuidBytesList(guid, 2, v1, v2); }
+        void ReadGuidBytes(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3) { ReadGuidBytesList(guid, 3, v1, v2, v3); }
+        void ReadGuidBytes(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4) { ReadGuidBytesList(guid, 4, v1, v2, v3, v4); }
+        void ReadGuidBytes(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5) { ReadGuidBytesList(guid, 5, v1, v2, v3, v4, v5); }
+        void ReadGuidBytes(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6) { ReadGuidBytesList(guid, 6, v1, v2, v3, v4, v5, v6); }
+        void ReadGuidBytes(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6, uint8 v7) { ReadGuidBytesList(guid, 7, v1, v2, v3, v4, v5, v6, v7); }
+        void ReadGuidBytes(ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6, uint8 v7, uint8 v8) { ReadGuidBytesList(guid, 8, v1, v2, v3, v4, v5, v6, v7, v8); }
+
+        void WriteGuidBytesList(const ObjectGuid& guid, int count, ...)
+        {
+            va_list ap;
+            va_start(ap, count);
+            for (uint8 i = 0; i < count; ++i)
+            {
+                uint8 offset = va_arg(ap, uint32);
+                WriteByteSeq(guid[offset]);
+            }
+            va_end(ap);
+        }
+        void WriteGuidBytes(const ObjectGuid& guid, uint8 v1) { WriteGuidBytesList(guid, 1, v1); }
+        void WriteGuidBytes(const ObjectGuid& guid, uint8 v1, uint8 v2) { WriteGuidBytesList(guid, 2, v1, v2); }
+        void WriteGuidBytes(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3) { WriteGuidBytesList(guid, 3, v1, v2, v3); }
+        void WriteGuidBytes(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4) { WriteGuidBytesList(guid, 4, v1, v2, v3, v4); }
+        void WriteGuidBytes(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5) { WriteGuidBytesList(guid, 5, v1, v2, v3, v4, v5); }
+        void WriteGuidBytes(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6) { WriteGuidBytesList(guid, 6, v1, v2, v3, v4, v5, v6); }
+        void WriteGuidBytes(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6, uint8 v7) { WriteGuidBytesList(guid, 7, v1, v2, v3, v4, v5, v6, v7); }
+        void WriteGuidBytes(const ObjectGuid& guid, uint8 v1, uint8 v2, uint8 v3, uint8 v4, uint8 v5, uint8 v6, uint8 v7, uint8 v8) { WriteGuidBytesList(guid, 8, v1, v2, v3, v4, v5, v6, v7, v8); }
 
         /**
           * @name   PutBits
@@ -765,6 +885,7 @@ class ByteBuffer
         }
 
         const uint8 *contents() const { return &_storage[0]; }
+        uint8 *contents() { return &_storage[0]; }
 
         size_t size() const { return _storage.size(); }
 #ifndef CROSS
@@ -839,6 +960,13 @@ class ByteBuffer
             *this << packed;
         }
 
+        void AppendPackedTime(time_t time)
+        {
+            tm lt;
+            localtime_r(&time, &lt);
+            append<uint32>((lt.tm_year - 100) << 24 | lt.tm_mon << 20 | (lt.tm_mday - 1) << 14 | lt.tm_wday << 11 | lt.tm_hour << 6 | lt.tm_min);
+        }
+
         void put(size_t pos, const uint8 *src, size_t cnt)
         {
             if (pos + cnt > size())
@@ -850,68 +978,11 @@ class ByteBuffer
             memcpy(&_storage[pos], src, cnt);
         }
 
-        void print_storage() const
-        {
-            if (!sLog->ShouldLog(LOG_FILTER_NETWORKIO, LOG_LEVEL_TRACE)) // optimize disabled debug output
-                return;
+        void print_storage() const;
 
-            std::ostringstream o;
-            o << "STORAGE_SIZE: " << size();
-            for (uint32 i = 0; i < size(); ++i)
-                o << read<uint8>(i) << " - ";
-            o << " ";
+        void textlike() const;
 
-            sLog->outTrace(LOG_FILTER_NETWORKIO, "%s", o.str().c_str());
-        }
-
-        void textlike() const
-        {
-            if (!sLog->ShouldLog(LOG_FILTER_NETWORKIO, LOG_LEVEL_TRACE)) // optimize disabled debug output
-                return;
-
-            std::ostringstream o;
-            o << "STORAGE_SIZE: " << size();
-            for (uint32 i = 0; i < size(); ++i)
-            {
-                char buf[1];
-                snprintf(buf, 1, "%c", read<uint8>(i));
-                o << buf;
-            }
-            o << " ";
-            sLog->outTrace(LOG_FILTER_NETWORKIO, "%s", o.str().c_str());
-        }
-
-        void hexlike() const
-        {
-            if (!sLog->ShouldLog(LOG_FILTER_NETWORKIO, LOG_LEVEL_TRACE)) // optimize disabled debug output
-                return;
-
-            uint32 j = 1, k = 1;
-
-            std::ostringstream o;
-            o << "STORAGE_SIZE: " << size();
-
-            for (uint32 i = 0; i < size(); ++i)
-            {
-                char buf[3];
-                snprintf(buf, 1, "%2X ", read<uint8>(i));
-                if ((i == (j * 8)) && ((i != (k * 16))))
-                {
-                    o << "| ";
-                    ++j;
-                }
-                else if (i == (k * 16))
-                {
-                    o << "\n";
-                    ++k;
-                    ++j;
-                }
-
-                o << buf;
-            }
-            o << " ";
-            sLog->outTrace(LOG_FILTER_NETWORKIO, "%s", o.str().c_str());
-        }
+        void hexlike() const;
 
         size_t GetBitPos() const
         {

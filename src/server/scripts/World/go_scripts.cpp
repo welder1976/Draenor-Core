@@ -287,7 +287,7 @@ public:
                     if (Spell)
                         creature->CastSpell(player, Spell, false);
                     else
-                        sLog->outError(LOG_FILTER_TSCR, "go_ethereum_prison summoned Creature (entry %u) but faction (%u) are not expected by script.", creature->GetEntry(), creature->getFaction());
+                        TC_LOG_ERROR("scripts", "go_ethereum_prison summoned Creature (entry %u) but faction (%u) are not expected by script.", creature->GetEntry(), creature->getFaction());
                 }
             }
         }
@@ -457,7 +457,7 @@ public:
 
     bool OnGossipHello(Player* player, GameObject* /*go*/)
     {
-        if (player->GetQuestRewardStatus(QUEST_TELE_CRYSTAL_FLAG))
+        if (player->GetQuestRewardStatus(QUEST_LEARN_LEAVE_RETURN) || player->GetQuestStatus(QUEST_LEARN_LEAVE_RETURN) == QUEST_STATUS_INCOMPLETE)
             return false;
 
         player->GetSession()->SendNotification(GO_TELE_TO_DALARAN_CRYSTAL_FAILED);

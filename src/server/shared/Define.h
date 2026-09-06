@@ -1,31 +1,35 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifndef TRINITY_DEFINE_H
 #define TRINITY_DEFINE_H
 
-#include "CompilerDefs.h"
-
-#include <ace/Basic_Types.h>
-#include <ace/ACE_export.h>
+#if COMPILER_GNU == COMPILER_GNU
+#  if !defined(__STDC_FORMAT_MACROS)
+#    define __STDC_FORMAT_MACROS
+#  endif
+#endif
 
 #include <cstddef>
+#include <cinttypes>
+
+#include "CompilerDefs.h"
 
 #define TRINITY_LITTLEENDIAN 0
 #define TRINITY_BIGENDIAN    1
 
 #if !defined(TRINITY_ENDIAN)
-#  if defined (ACE_BIG_ENDIAN)
+#  if defined (BOOST_ENDIAN_BIG_BYTE)
 #    define TRINITY_ENDIAN TRINITY_BIGENDIAN
-#  else //ACE_BYTE_ORDER != ACE_BIG_ENDIAN
+#  else
 #    define TRINITY_ENDIAN TRINITY_LITTLEENDIAN
-#  endif //ACE_BYTE_ORDER
-#endif //TRINITY_ENDIAN
+#  endif
+#endif
 
 #if PLATFORM == PLATFORM_WINDOWS
 #  define TRINITY_PATH_MAX MAX_PATH
@@ -57,25 +61,55 @@
 #else //COMPILER != COMPILER_GNU
 #  define ATTR_NORETURN
 #  define ATTR_PRINTF(F, V)
-#  define ATTR_DEPRECATED
+#    define ATTR_DEPRECATED
 #endif //COMPILER == COMPILER_GNU
 
-#define UI64FMTD ACE_UINT64_FORMAT_SPECIFIER
-#define UI64LIT(N) ACE_UINT64_LITERAL(N)
+#ifdef TRINITY_API_USE_DYNAMIC_LINKING
+#  if TRINITY_COMPILER == TRINITY_COMPILER_MICROSOFT
+#    define TC_API_EXPORT __declspec(dllexport)
+#    define TC_API_IMPORT __declspec(dllimport)
+#  elif TRINITY_COMPILER == TRINITY_COMPILER_GNU
+#    define TC_API_EXPORT __attribute__((visibility("default")))
+#    define TC_API_IMPORT
+#  else
+#    error compiler not supported!
+#  endif
+#else
+#  define TC_API_EXPORT
+#  define TC_API_IMPORT
+#endif
 
-#define SI64FMTD ACE_INT64_FORMAT_SPECIFIER
-#define SI64LIT(N) ACE_INT64_LITERAL(N)
+#ifdef TRINITY_API_EXPORT_SHARED
+ #  define TC_SHARED_API TC_API_EXPORT
+ #else
+ #  define TC_SHARED_API TC_API_IMPORT
+#endif
 
-#define SIZEFMTD ACE_SIZE_T_FORMAT_SPECIFIER
+#ifndef TC_GAME_API
+#  define TC_GAME_API
+#endif
+#ifndef TC_COMMON_API
+#  define TC_COMMON_API
+#endif
+#ifndef TC_DATABASE_API
+#  define TC_DATABASE_API
+#endif
+ 
+#define UI64FMTD "%" PRIu64
+#define SZFMTD "%zu"
+#define UI64LIT(N) UINT64_C(N)
 
-typedef ACE_INT64 int64;
-typedef ACE_INT32 int32;
-typedef ACE_INT16 int16;
-typedef ACE_INT8 int8;
-typedef ACE_UINT64 uint64;
-typedef ACE_UINT32 uint32;
-typedef ACE_UINT16 uint16;
-typedef ACE_UINT8 uint8;
+#define SI64FMTD "%" PRId64
+#define SI64LIT(N) INT64_C(N)
+
+typedef int64_t int64;
+typedef int32_t int32;
+typedef int16_t int16;
+typedef int8_t int8;
+typedef uint64_t uint64;
+typedef uint32_t uint32;
+typedef uint16_t uint16;
+typedef uint8_t uint8;
 
 enum DBCFormer
 {
@@ -85,12 +119,22 @@ enum DBCFormer
     FT_FLOAT = 'f',                                           //float
     FT_INT = 'i',                                             //uint32
     FT_BYTE = 'b',                                            //uint8
+    FT_SHORT = 'w',                                           //uint16 aka word
     FT_SORT = 'd',                                            //sorted by this field, field is not included
     FT_INDEX = 'n',                                             //the same, but parsed to data
     FT_LOGIC = 'l',                                           //Logical (boolean)
     FT_SQL_PRESENT = 'p',                                     //Used in sql format to mark column present in sql dbc
     FT_SQL_ABSENT = 'a',                                      //Used in sql format to mark column absent in sql dbc
     FT_SQL_SUP = 'o',                                         // Supp sql row (not in dbc)
+
+    FT_ARR_2 = '2',
+    FT_ARR_3 = '3',
+    FT_ARR_4 = '4',
+    FT_ARR_5 = '5',
+    FT_ARR_6 = '6',
+    FT_ARR_7 = '7',
+    FT_ARR_8 = '8',
+
     FT_END = '\0'
 };
 #endif //TRINITY_DEFINE_H

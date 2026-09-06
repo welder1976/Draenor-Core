@@ -47,6 +47,7 @@ file(GLOB_RECURSE sources_Quests Quests/*.cpp Quests/*.h)
 file(GLOB_RECURSE sources_Reputation Reputation/*.cpp Reputation/*.h)
 file(GLOB_RECURSE sources_Scripting Scripting/*.cpp Scripting/*.h Scripting/*.hpp)
 file(GLOB_RECURSE sources_Server Server/*.cpp Server/*.h)
+list(FILTER sources_Server EXCLUDE REGEX "IRSocket\\.cpp$")
 file(GLOB_RECURSE sources_Cross Server/Cross/*.cpp Server/Cross/*.h)
 file(GLOB_RECURSE sources_Skills Skills/*.cpp Skills/*.h Skills/*.hpp)
 file(GLOB_RECURSE sources_Spells Spells/*.cpp Spells/*.h)
@@ -64,6 +65,7 @@ file(GLOB_RECURSE sources_Cinematic Cinematic/*.h Cinematic/*.cpp)
 
 file(GLOB_RECURSE sources_Garrison Garrison/*.hpp Garrison/*.cpp)
 file(GLOB_RECURSE sources_Vignette Vignette/*.hpp Vignette/*.cpp Vignette/*.hxx)
+file(GLOB_RECURSE sources_Services Services/*.cpp Services/*.h)
 
 # Create game-libary
 
@@ -127,48 +129,7 @@ set(game_STAT_SRCS
   ${sources_Garrison}
   ${sources_shared_ptrs}
   ${sources_Vignette}
-)
-
-MACRO( auto_group ProjectDirectory ProjectSources )
-	SET( DirectorySources "${ProjectSources}" )
-	FOREACH( Source ${DirectorySources} )
-		if ("${Source}" MATCHES "(/)+")
-			STRING( REGEX REPLACE "${ProjectDirectory}" "" RelativePath "${Source}" )
-			STRING( REGEX REPLACE "[\\\\/][^\\\\/]*$" "" RelativePath "${RelativePath}" )
-			STRING( REGEX REPLACE "^[\\\\/]" "" RelativePath "${RelativePath}" )
-			STRING( REGEX REPLACE "/" "\\\\\\\\" RelativePath "${RelativePath}" )
-			SOURCE_GROUP( "${RelativePath}" FILES ${Source} )
-		else()
-			SOURCE_GROUP( "" FILES ${Source} )
-		endif()
-	ENDFOREACH( Source )
-ENDMACRO( auto_group )
-
-auto_group("${CMAKE_CURRENT_SOURCE_DIR}" "${game_STAT_SRCS}")
-
-set(game_STAT_SRCS
-  ${game_STAT_SRCS}
-)
-
-MACRO( auto_group ProjectDirectory ProjectSources )
-	SET( DirectorySources "${ProjectSources}" )
-	FOREACH( Source ${DirectorySources} )
-		if ("${Source}" MATCHES "(/)+")
-			STRING( REGEX REPLACE "${ProjectDirectory}" "" RelativePath "${Source}" )
-			STRING( REGEX REPLACE "[\\\\/][^\\\\/]*$" "" RelativePath "${RelativePath}" )
-			STRING( REGEX REPLACE "^[\\\\/]" "" RelativePath "${RelativePath}" )
-			STRING( REGEX REPLACE "/" "\\\\\\\\" RelativePath "${RelativePath}" )
-			SOURCE_GROUP( "${RelativePath}" FILES ${Source} )
-		else()
-			SOURCE_GROUP( "" FILES ${Source} )
-		endif()
-	ENDFOREACH( Source )
-ENDMACRO( auto_group )
-
-auto_group("${CMAKE_CURRENT_SOURCE_DIR}" "${game_STAT_SRCS}")
-
-set(game_STAT_SRCS
-  ${game_STAT_SRCS}
+  ${sources_Services}
 )
 
 include_directories(
@@ -196,10 +157,13 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/server/shared/Dynamic/LinkedReference
   ${CMAKE_SOURCE_DIR}/src/server/shared/Dynamic
   ${CMAKE_SOURCE_DIR}/src/server/shared/Logging
+  ${CMAKE_SOURCE_DIR}/src/server/shared/Networking
   ${CMAKE_SOURCE_DIR}/src/server/shared/Packets
   ${CMAKE_SOURCE_DIR}/src/server/shared/Threading
   ${CMAKE_SOURCE_DIR}/src/server/shared/Utilities
   ${CMAKE_SOURCE_DIR}/src/server/shared/Reporting
+  ${CMAKE_SOURCE_DIR}/src/server/shared/Realm
+  ${CMAKE_SOURCE_DIR}/src/server/shared/JSON
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/Accounts
   ${CMAKE_CURRENT_SOURCE_DIR}/Anticheat
@@ -273,6 +237,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/Scripting
   ${CMAKE_CURRENT_SOURCE_DIR}/Server/Cross
   ${CMAKE_CURRENT_SOURCE_DIR}/Server/Protocol
+  ${CMAKE_CURRENT_SOURCE_DIR}/Server/Packets
   ${CMAKE_CURRENT_SOURCE_DIR}/Server
   ${CMAKE_CURRENT_SOURCE_DIR}/Skills
   ${CMAKE_CURRENT_SOURCE_DIR}/Spells
@@ -288,8 +253,12 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/World
   ${CMAKE_CURRENT_SOURCE_DIR}/SharedPtrs
   ${CMAKE_CURRENT_SOURCE_DIR}/Vignette
+  ${CMAKE_CURRENT_SOURCE_DIR}/Services
+  ${CMAKE_SOURCE_DIR}/src/server/proto
+  ${CMAKE_SOURCE_DIR}/src/server/proto/Client
+  ${CMAKE_SOURCE_DIR}/src/server/proto/Login
+  ${CMAKE_SOURCE_DIR}/src/server/proto/RealmList
   ${CMAKE_SOURCE_DIR}/src/server/scripts/PrecompiledHeaders
-  ${ACE_INCLUDE_DIR}
   ${MYSQL_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
   ${MSFRAMEWORK_INCLUDE_DIR}
@@ -297,13 +266,21 @@ include_directories(
 
 add_definitions("-DGAME_SERVER_PROJECTS")
 
+GroupSources(${CMAKE_CURRENT_SOURCE_DIR})
+
 add_library(game STATIC
   ${game_STAT_SRCS}
   ${game_STAT_PCH_SRC}
 )
 set_property(TARGET game PROPERTY FOLDER "server")
 
-add_dependencies(game revision_data.h)
+target_link_libraries(game
+  shared
+  proto
+  boost
+)
+
+add_dependencies(game revision.h)
 
 # Generate precompiled header
 if (USE_COREPCH)

@@ -35,24 +35,22 @@ m_length(NULL)
     if (!m_metadataResult)
         return;
 
-    if (m_stmt->bind_result_done)
-    {
-        delete[] m_stmt->bind->length;
-        delete[] m_stmt->bind->is_null;
-    }
+    // Do NOT delete[] m_stmt->bind->length / is_null: MySQL 8 / libmysql owns those
+    // after mysql_stmt_bind_result. delete[] corrupts the heap and later crashes
+    // inside mysql_stmt_execute / list iteration (ACCESS_VIOLATION).
 
     m_rBind = new MYSQL_BIND[m_fieldCount];
-    m_isNull = new my_bool[m_fieldCount];
+    m_isNull = new bool[m_fieldCount];
     m_length = new unsigned long[m_fieldCount];
 
-    memset(m_isNull, 0, sizeof(my_bool) * m_fieldCount);
+    memset(m_isNull, 0, sizeof(bool) * m_fieldCount);
     memset(m_rBind, 0, sizeof(MYSQL_BIND) * m_fieldCount);
     memset(m_length, 0, sizeof(unsigned long) * m_fieldCount);
 
     //- This is where we store the (entire) resultset
     if (mysql_stmt_store_result(m_stmt))
     {
-        sLog->outWarn(LOG_FILTER_SQL, "%s:mysql_stmt_store_result, cannot bind result from MySQL server. Error: %s", __FUNCTION__, mysql_stmt_error(m_stmt));
+        TC_LOG_WARN("sql.sql", "%s:mysql_stmt_store_result, cannot bind result from MySQL server. Error: %s", __FUNCTION__, mysql_stmt_error(m_stmt));
         return;
     }
 
@@ -76,7 +74,7 @@ m_length(NULL)
     //- This is where we bind the bind the buffer to the statement
     if (mysql_stmt_bind_result(m_stmt, m_rBind))
     {
-        sLog->outWarn(LOG_FILTER_SQL, "%s:mysql_stmt_bind_result, cannot bind result from MySQL server. Error: %s", __FUNCTION__, mysql_stmt_error(m_stmt));
+        TC_LOG_WARN("sql.sql", "%s:mysql_stmt_bind_result, cannot bind result from MySQL server. Error: %s", __FUNCTION__, mysql_stmt_error(m_stmt));
         mysql_stmt_free_result(m_stmt);
         CleanUp();
         delete[] m_isNull;

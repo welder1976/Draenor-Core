@@ -672,6 +672,7 @@ public:
 
     uint32 GetSpellXSpellVisualId(Unit const* p_Caster = nullptr) const;
     uint32 GetSpellVisualID(Unit const* p_caster) const;
+    bool IsSealSpell() const;
 };
 
 #endif // _SPELLINFO_H

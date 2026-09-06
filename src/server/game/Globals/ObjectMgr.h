@@ -31,11 +31,12 @@
 #include "ConditionMgr.h"
 #include <functional>
 #include "PhaseMgr.h"
-#include <ace/Thread_Mutex.h>
-#include <unordered_set>
+#include <map>
 
 class Item;
 class PhaseMgr;
+
+typedef std::map<uint32, uint8> ExpansionRequirementContainer;
 
 // GCC have alternative #pragma pack(N) syntax and old gcc version not support pack(push, N), also any gcc version not support it at some platform
 #if defined(__GNUC__)
@@ -873,13 +874,17 @@ class ObjectMgr
 #ifndef CROSS
     friend class PlayerDumpReader;
 #endif /* not CROSS */
-    friend class ACE_Singleton<ObjectMgr, ACE_Null_Mutex>;
 
     private:
         ObjectMgr();
         ~ObjectMgr();
 
     public:
+        static ObjectMgr* instance()
+        {
+            static ObjectMgr* instance = new ObjectMgr();
+            return instance;
+        }
         typedef std::unordered_map<uint32, Item*> ItemMap;
 
         typedef std::unordered_map<uint32, Quest*> QuestMap;
@@ -918,6 +923,9 @@ class ObjectMgr
         std::vector<RecipesConditions> GetNpcRecipesConditions(uint32 p_NpcID) { return _NpcRecipesConditions[p_NpcID]; }
 
         CreatureTemplate const* GetCreatureTemplate(uint32 entry);
+
+        std::string GetRealmName(uint32 = 0) const { return sWorld->GetRealmName(); }
+        std::string GetNormalizedRealmName(uint32 = 0) const { return sWorld->GetNormalizedRealmName(); }
         CreatureTemplate const* GetRandomTemplate(CreatureType p_Type);
         CreatureTemplate** GetCreatureTemplates() const { return m_CreatureTemplateStore; }
         uint32 GetCreatureTemplateStoreSize() const { return m_CreatureTemplateStoreSize; }
@@ -1115,13 +1123,13 @@ class ObjectMgr
 
         void LoadQuestRelations()
         {
-            sLog->outInfo(LOG_FILTER_SERVER_LOADING, "Loading GO Start Quest Data...");
+            TC_LOG_INFO("server.loading", "Loading GO Start Quest Data...");
             LoadGameobjectQuestStarters();
-            sLog->outInfo(LOG_FILTER_SERVER_LOADING, "Loading GO End Quest Data...");
+            TC_LOG_INFO("server.loading", "Loading GO End Quest Data...");
             LoadGameobjectQuestEnders();
-            sLog->outInfo(LOG_FILTER_SERVER_LOADING, "Loading Creature Start Quest Data...");
+            TC_LOG_INFO("server.loading", "Loading Creature Start Quest Data...");
             LoadCreatureQuestStarters();
-            sLog->outInfo(LOG_FILTER_SERVER_LOADING, "Loading Creature End Quest Data...");
+            TC_LOG_INFO("server.loading", "Loading Creature End Quest Data...");
             LoadCreatureQuestEnders();
         }
         void LoadFollowerQuests();
@@ -2009,8 +2017,8 @@ class ObjectMgr
         CacheVendorItemContainer _cacheVendorItemStore;
         CacheTrainerSpellContainer _cacheTrainerSpellStore;
 
-        std::set<uint32> _difficultyEntries[Difficulty::MaxDifficulties - 1]; // already loaded difficulty 1 value in creatures, used in CheckCreatureTemplate
-        std::set<uint32> _hasDifficultyEntries[Difficulty::MaxDifficulties - 1]; // already loaded creatures with difficulty 1 values, used in CheckCreatureTemplate
+        std::set<uint32> _difficultyEntries[Difficulty::MAX_DIFFICULTY - 1]; // already loaded difficulty 1 value in creatures, used in CheckCreatureTemplate
+        std::set<uint32> _hasDifficultyEntries[Difficulty::MAX_DIFFICULTY - 1]; // already loaded creatures with difficulty 1 values, used in CheckCreatureTemplate
 
         std::unordered_set<uint32> m_SpellInvalid;
         std::unordered_set<uint32> m_SpellStolen;
@@ -2034,7 +2042,7 @@ class ObjectMgr
         std::set<std::pair<uint32, uint32>> m_DisabledEncounters;
 };
 
-#define sObjectMgr ACE_Singleton<ObjectMgr, ACE_Null_Mutex>::instance()
+#define sObjectMgr ObjectMgr::instance()
 
 // scripting access functions
 bool LoadTrinityStrings(char const* table, int32 start_value = MAX_CREATURE_AI_TEXT_STRING_ID, int32 end_value = std::numeric_limits<int32>::min());

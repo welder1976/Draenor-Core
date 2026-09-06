@@ -11,51 +11,58 @@
 #include "Common.h"
 #include "utf8.h"
 #include "SFMT.h"
-#include <ace/TSS_T.h>
-#include <ace/INET_Addr.h>
+#include "Errors.h" // for ASSERT
+#include <boost/thread/tss.hpp>
 
 # ifdef WIN32
     # include <ppl.h>
 # endif
 
-typedef ACE_TSS<CRandomSFMT> SFMTRandTSS;
-static SFMTRandTSS sfmtRand;
+static boost::thread_specific_ptr<SFMTRand> sfmtRand;
+
+static SFMTRand* GetRng()
+{
+    SFMTRand* rand = sfmtRand.get();
+
+    if (!rand)
+    {
+        rand = new SFMTRand();
+        sfmtRand.reset(rand);
+    }
+
+    return rand;
+}
 
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
-void init_sfmt()
-{
-    sfmtRand->RandomInit((int)(time(0)));
-}
-
 int32 irand(int32 min, int32 max)
 {
-    return int32(sfmtRand->IRandom(min, max));
+    return int32(GetRng()->IRandom(min, max));
 }
 
 uint32 urand(uint32 min, uint32 max)
 {
-    return uint32(sfmtRand->IRandom((uint32)min, (uint32)max));
+    return GetRng()->URandom(min, max);
 }
 
 float frand(float min, float max)
 {
-    return float(sfmtRand->Random() * (max - min) + min);
+    return float(GetRng()->Random() * (max - min) + min);
 }
 
 int32 rand32()
 {
-    return int32(sfmtRand->BRandom());
+    return int32(GetRng()->BRandom());
 }
 
 double rand_norm(void)
 {
-    return sfmtRand->Random();
+    return GetRng()->Random();
 }
 
 double rand_chance(void)
 {
-    return sfmtRand->Random() * 100.0;
+    return GetRng()->Random() * 100.0;
 }
 
 Tokenizer::Tokenizer(const std::string &src, const char sep, uint32 vectorReserve)
@@ -142,6 +149,13 @@ nullable_string PackDBBinary(void const* unpackedData, uint32 unpackedCount)
     return nullable_string((char const*)unpackedData, unpackedCount);
 }
 
+#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32__))
+struct tm* localtime_r(const time_t* time, struct tm* result)
+{
+    localtime_s(result, time);
+    return result;
+}
+#endif
 
 std::string secsToTimeString(uint64 timeInSecs, bool shortText, bool hoursOnly)
 {
@@ -200,7 +214,8 @@ uint32 TimeStringToSecs(const std::string& timestring)
 
 std::string TimeToTimestampStr(time_t t)
 {
-    tm* aTm = localtime(&t);
+    tm aTm;
+    localtime_r(&t, &aTm);
     //       YYYY   year
     //       MM     month (2 digits 01-12)
     //       DD     day (2 digits 01-31)
@@ -208,7 +223,7 @@ std::string TimeToTimestampStr(time_t t)
     //       MM     minutes (2 digits 00-59)
     //       SS     seconds (2 digits 00-59)
     char buf[20];
-    snprintf(buf, 20, "%04d-%02d-%02d_%02d-%02d-%02d", aTm->tm_year+1900, aTm->tm_mon+1, aTm->tm_mday, aTm->tm_hour, aTm->tm_min, aTm->tm_sec);
+    snprintf(buf, 20, "%04d-%02d-%02d_%02d-%02d-%02d", aTm.tm_year + 1900, aTm.tm_mon + 1, aTm.tm_mday, aTm.tm_hour, aTm.tm_min, aTm.tm_sec);
     return std::string(buf);
 }
 
@@ -240,6 +255,17 @@ uint32 CreatePIDFile(const std::string& filename)
     fclose(pid_file);
 
     return (uint32)pid;
+}
+
+uint32 GetPID()
+{
+#ifdef _WIN32
+    DWORD pid = GetCurrentProcessId();
+#else
+    pid_t pid = getpid();
+#endif
+
+    return uint32(pid);
 }
 
 size_t utf8length(std::string& utf8str)
@@ -490,6 +516,17 @@ void vutf8printf(FILE* out, const char *str, va_list* ap)
 #endif
 }
 
+bool Utf8ToUpperOnlyLatin(std::string& utf8String)
+{
+    std::wstring wstr;
+    if (!Utf8toWStr(utf8String, wstr))
+        return false;
+
+    std::transform(wstr.begin(), wstr.end(), wstr.begin(), wcharToUpperOnlyLatin);
+
+    return WStrToUtf8(wstr, utf8String);
+}
+
 std::string ByteArrayToHexStr(uint8 const* bytes, uint32 arrayLen, bool reverse /* = false */)
 {
     int32 init = 0;
@@ -507,7 +544,7 @@ std::string ByteArrayToHexStr(uint8 const* bytes, uint32 arrayLen, bool reverse 
     for (int32 i = init; i != end; i += op)
     {
         char buffer[4];
-        sprintf(buffer, "%02X", bytes[i]);
+        snprintf(buffer, sizeof(buffer), "%02X", bytes[i]);
         ss << buffer;
     }
 

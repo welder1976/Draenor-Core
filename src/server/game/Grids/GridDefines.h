@@ -171,7 +171,7 @@ bool operator!=(const CoordPair<LIMIT> &p1, const CoordPair<LIMIT> &p2)
 typedef CoordPair<MAX_NUMBER_OF_GRIDS> GridCoord;
 typedef CoordPair<TOTAL_NUMBER_OF_CELLS_PER_MAP> CellCoord;
 
-namespace JadeCore
+namespace Trinity
 {
     template<class RET_TYPE, int CENTER_VAL>
     inline RET_TYPE Compute(float x, float y, float center_offset, float size)
@@ -217,7 +217,7 @@ namespace JadeCore
 
     inline bool IsValidMapCoord(float c)
     {
-        return std::isfinite(c) && (std::fabs(c) <= MAP_HALFSIZE - 0.5f);
+        return std::isfinite(c) && (std::fabs(c) <= MAP_HALFSIZE - CENTER_GRID_OFFSET - 0.5f);
     }
 
     inline bool IsValidMapCoord(float x, float y)

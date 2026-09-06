@@ -644,13 +644,6 @@ class boss_elegon : public CreatureScript
                     if (Player* l_Player = l_Itr->getSource())
                         me->CastSpell(l_Player, SPELL_ELEGON_BONUS, true);
                 }
-
-                if (IsLFR())
-                {
-                    Player* l_Player = l_PlrList.begin()->getSource();
-                    if (l_Player && l_Player->GetGroup())
-                        sLFGMgr->AutomaticLootAssignation(me, l_Player->GetGroup());
-                }
             }
 
             void MoveInLineOfSight(Unit* who)
@@ -1966,7 +1959,7 @@ class spell_total_annihilation : public SpellScriptLoader
 
                     uint8 diffic = caster->GetMap()->GetDifficultyID();
 
-                    if ((!targetCount &&  diffic == Difficulty10N) || (targetCount < 3 && diffic == Difficulty25N))
+                    if ((!targetCount &&  diffic == RAID_DIFFICULTY_10MAN_NORMAL) || (targetCount < 3 && diffic == RAID_DIFFICULTY_25MAN_NORMAL))
                         caster->CastSpell(caster, SPELL_CATASTROPHIC_ANOMALY, false);
                 }
             }
@@ -2026,8 +2019,8 @@ class at_draw_power : public AreaTriggerEntityScript
             if (!l_Caster)
                 return;
 
-            JadeCore::NearestAttackableUnitInObjectRangeCheck u_check(p_AreaTrigger, l_Caster, l_Radius);
-            JadeCore::UnitListSearcher<JadeCore::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, u_check);
+            Trinity::NearestAttackableUnitInObjectRangeCheck u_check(p_AreaTrigger, l_Caster, l_Radius);
+            Trinity::UnitListSearcher<Trinity::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, u_check);
             p_AreaTrigger->VisitNearbyObject(l_Radius, l_Searcher);
 
             for (Unit* l_Unit : l_TargetList)

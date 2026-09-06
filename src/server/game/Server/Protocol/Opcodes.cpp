@@ -43,7 +43,7 @@ void ValidateAndSetOpcode<true, true>(uint16 p_Opcode, char const* p_Name, Sessi
         {
             if (g_OpcodeTable[l_CurrentDirection][p_Opcode] != NULL) // register MSG opcode as client and server
             {
-                sLog->outError(LOG_FILTER_NETWORKIO, "Tried to override handler of %s with %s (opcode %u)", g_OpcodeTable[l_CurrentDirection][p_Opcode]->name, p_Name, p_Opcode);
+                TC_LOG_ERROR("network", "Tried to override handler of %s with %s (opcode %u)", g_OpcodeTable[l_CurrentDirection][p_Opcode]->name, p_Name, p_Opcode);
                 return;
             }
 
@@ -55,7 +55,7 @@ void ValidateAndSetOpcode<true, true>(uint16 p_Opcode, char const* p_Name, Sessi
 
     if (g_OpcodeTable[l_OpcodeDirection][p_Opcode] != NULL)
     {
-        sLog->outError(LOG_FILTER_NETWORKIO, "Tried to override handler of %s with %s (opcode %u)", g_OpcodeTable[l_OpcodeDirection][p_Opcode]->name, p_Name, p_Opcode);
+        TC_LOG_ERROR("network", "Tried to override handler of %s with %s (opcode %u)", g_OpcodeTable[l_OpcodeDirection][p_Opcode]->name, p_Name, p_Opcode);
         return;
     }
 
@@ -65,13 +65,13 @@ void ValidateAndSetOpcode<true, true>(uint16 p_Opcode, char const* p_Name, Sessi
 template<>
 void ValidateAndSetOpcode<false, true>(uint16 p_Opcode, char const* /*p_Name*/, SessionStatus /*p_Status*/, PacketProcessing /*p_Processing*/, g_OpcodeHandlerType /*p_Handler*/, IRPacketProcessing /*forwardToIR*/)
 {
-    sLog->outError(LOG_FILTER_NETWORKIO, "Tried to set handler for an invalid opcode %d", p_Opcode);
+    TC_LOG_ERROR("network", "Tried to set handler for an invalid opcode %d", p_Opcode);
 }
 
 template<>
 void ValidateAndSetOpcode<true, false>(uint16 /*p_Opcode*/, char const* p_Name, SessionStatus /*p_Status*/, PacketProcessing /*p_Processing*/, g_OpcodeHandlerType /*p_Handler*/, IRPacketProcessing /*forwardToIR*/)
 {
-    sLog->outError(LOG_FILTER_NETWORKIO, "Opcode %s got value 0", p_Name);
+    TC_LOG_ERROR("network", "Opcode %s got value 0", p_Name);
 }
 
 #define DEFINE_OPCODE_HANDLER(p_Opcode, p_Status, p_Processing, p_Handler, forwardToIR)                                      \
@@ -99,6 +99,7 @@ void InitOpcodes()
         DEFINE_OPCODE_HANDLER(SMSG_CACHE_VERSION,                                   STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
         DEFINE_OPCODE_HANDLER(SMSG_ADDON_INFO,                                      STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
         DEFINE_OPCODE_HANDLER(SMSG_FEATURE_SYSTEM_STATUS,                           STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
+        DEFINE_OPCODE_HANDLER(SMSG_FEATURE_SYSTEM_STATUS_GLUE_SCREEN,               STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
         DEFINE_OPCODE_HANDLER(SMSG_SET_TIME_ZONE_INFORMATION,                       STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
         DEFINE_OPCODE_HANDLER(SMSG_LOGIN_VERIFY_WORLD,                              STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
         DEFINE_OPCODE_HANDLER(SMSG_NEW_WORLD,                                       STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
@@ -109,6 +110,10 @@ void InitOpcodes()
         DEFINE_OPCODE_HANDLER(SMSG_INITIAL_SETUP,                                   STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
         DEFINE_OPCODE_HANDLER(SMSG_PONG,                                            STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
         DEFINE_OPCODE_HANDLER(SMSG_UITIME,                                          STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
+        DEFINE_OPCODE_HANDLER(SMSG_BATTLENET_NOTIFICATION,                          STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
+        DEFINE_OPCODE_HANDLER(SMSG_BATTLENET_RESPONSE,                              STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
+        DEFINE_OPCODE_HANDLER(SMSG_BATTLENET_SET_SESSION_STATE,                     STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
+        DEFINE_OPCODE_HANDLER(SMSG_BATTLENET_REALM_LIST_TICKET,                     STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
 
         /// Query
         DEFINE_OPCODE_HANDLER(SMSG_DB_REPLY,                                        STATUS_NEVER,         PROCESS_INPLACE,      &WorldSession::Handle_ServerSide,      PROCESS_LOCAL);
@@ -1092,6 +1097,8 @@ void InitOpcodes()
     DEFINE_OPCODE_HANDLER(CMSG_AUTH_CONTINUED_SESSION,                          STATUS_UNHANDLED,   PROCESS_INPLACE,        &WorldSession::Handle_NULL                      , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_SUSPEND_TOKEN_RESPONSE,                          STATUS_UNHANDLED,   PROCESS_INPLACE,        &WorldSession::Handle_NULL                      , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_AUTH_SESSION,                                    STATUS_NEVER,       PROCESS_THREADUNSAFE,   &WorldSession::Handle_EarlyProccess             , PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLENET_REQUEST,                               STATUS_AUTHED,      PROCESS_THREADUNSAFE,   &WorldSession::HandleBattlenetRequest           , PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLENET_REQUEST_REALM_LIST_TICKET,             STATUS_AUTHED,      PROCESS_THREADUNSAFE,   &WorldSession::HandleBattlenetRequestRealmListTicket, PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_ENABLE_NAGLE,                                    STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_EarlyProccess             , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_SUSPEND_COMMS_ACK,                               STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL                      , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_KEEP_ALIVE,                                      STATUS_NEVER,       PROCESS_THREADUNSAFE,   &WorldSession::Handle_EarlyProccess             , PROCESS_LOCAL);
@@ -1631,22 +1638,22 @@ void InitOpcodes()
     //////////////////////////////////////////////////////////////////////////
     DEFINE_OPCODE_HANDLER(CMSG_QUERY_BATTLE_PET_NAME,                           STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetQueryName,                    PROCESS_LOCAL);
 
-    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PETS_RECONVERT,                           STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::HandleBattlePetsReconvert,                   PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PETS_RECONVERT,                           STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_UPDATE_NOTIFY,                        STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetUpdateNotify,                 PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_REQUEST_JOURNAL_LOCK,                 STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetRequestJournalLock,           PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_REQUEST_JOURNAL,                      STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetRequestJournal,               PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_DELETE_PET,                           STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetDeletePet,                    PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_DELETE_PET_CHEAT,                     STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetDeletePetCheat,               PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_DELETE_JOURNAL,                       STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::HandleBattlePetDeleteJournal,                PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_DELETE_JOURNAL,                       STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_MODIFY_NAME,                          STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetModifyName,                   PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_SUMMON,                               STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetSummon,                       PROCESS_DISTANT_IF_NEED);
-    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_SET_LEVEL,                            STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::HandleBattlePetSetLevel,                     PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_SET_LEVEL,                            STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_SET_BATTLE_SLOT,                      STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetSetBattleSlot,                PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_SET_COLLAR,                           STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::HandleBattlePetSetCollar,                    PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_SET_COLLAR,                           STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PET_SET_FLAGS,                            STATUS_LOGGEDIN,    PROCESS_THREADSAFE,     &WorldSession::HandleBattlePetSetFlags,                     PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_RESTORE_BATTLE_PETS_HEALTH,                      STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::HandleBattlePetsRestoreHealth,               PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_ADD_BATTLE_PET,                                  STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::HandleBattlePetAdd,                          PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_CHEAT_BATTLE_PET_SET_QUALITY,                    STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::HandleBattlePetSetQualityCheat,              PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_RESTORE_BATTLE_PETS_HEALTH,                      STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_ADD_BATTLE_PET,                                  STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_CHEAT_BATTLE_PET_SET_QUALITY,                    STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_CAGE_BATTLE_PET,                                 STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandleBattlePetCage,                         PROCESS_LOCAL);
 
     DEFINE_OPCODE_HANDLER(CMSG_JOIN_PET_BATTLE_QUEUE,                           STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleJoinQueue,                    PROCESS_LOCAL);
@@ -1657,35 +1664,39 @@ void InitOpcodes()
     DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_REQUEST_UPDATE,                       STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleRequestUpdate,                PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_QUIT_NOTIFY,                          STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleQuitNotify,                   PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_FINAL_NOTIFY,                         STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleFinalNotify,                  PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_SCRIPT_ERROR_NOTIFY,                  STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleScriptErrorNotify,            PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_SCRIPT_ERROR_NOTIFY,                  STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_QUEUE_PROPOSE_MATCH_RESULT,           STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleQueueProposeMatchResult,      PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_INPUT_FIRST_PET,                      STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleFirstPet,                     PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_INPUT_FIRST_PET,                      STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_INPUT,                                STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleInput,                        PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_REPLACE_FRONT_PET,                    STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleReplaceFrontPet,              PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_DEBUG_QUEUE_DUMP,                     STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::HandlePetBattleDebugQueueDump,               PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_PET_BATTLE_DEBUG_QUEUE_DUMP,                     STATUS_LOGGEDIN,    PROCESS_INPLACE,        &WorldSession::Handle_NULL,                                 PROCESS_LOCAL);
 
     //////////////////////////////////////////////////////////////////////////
     /// Battle pay
     //////////////////////////////////////////////////////////////////////////
 #ifndef CROSS
-    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PAY_GET_PURCHASE_LIST,                    STATUS_LOGGEDIN,   PROCESS_INPLACE,         &WorldSession::HandleBattlepayGetPurchaseList    , PROCESS_DISTANT_IF_NEED);
-    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PAY_GET_PRODUCT_LIST_QUERY,               STATUS_LOGGEDIN,   PROCESS_THREADUNSAFE,    &WorldSession::HandleBattlepayGetProductListQuery, PROCESS_DISTANT_IF_NEED);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PAY_GET_PURCHASE_LIST,                    STATUS_AUTHED,     PROCESS_INPLACE,         &WorldSession::HandleBattlepayGetPurchaseList    , PROCESS_DISTANT_IF_NEED);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PAY_GET_PRODUCT_LIST_QUERY,               STATUS_AUTHED,     PROCESS_THREADUNSAFE,    &WorldSession::HandleBattlepayGetProductListQuery, PROCESS_DISTANT_IF_NEED);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PAY_START_PURCHASE,                       STATUS_LOGGEDIN,   PROCESS_INPLACE,         &WorldSession::HandleBattlePayStartPurchase      , PROCESS_DISTANT_IF_NEED);
     DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PAY_CONFIRM_PURCHASE_RESPONSE,            STATUS_LOGGEDIN,   PROCESS_INPLACE,         &WorldSession::HandleBattlePayConfirmPurchase    , PROCESS_DISTANT_IF_NEED);
+    DEFINE_OPCODE_HANDLER(CMSG_BATTLE_PAY_START_VAS_PURCHASE,                   STATUS_AUTHED,     PROCESS_INPLACE,         &WorldSession::Handle_NULL                       , PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_UPDATE_VAS_PURCHASE_STATES,                      STATUS_AUTHED,     PROCESS_INPLACE,         &WorldSession::Handle_NULL                       , PROCESS_LOCAL);
 #endif
 
     //////////////////////////////////////////////////////////////////////////
     /// LFG
     //////////////////////////////////////////////////////////////////////////
-    DEFINE_OPCODE_HANDLER(CMSG_DFGET_SYSTEM_INFO,                               STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgLockInfoRequestOpcode  , PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_DFGET_SYSTEM_INFO,                               STATUS_UNHANDLED,   PROCESS_INPLACE,        &WorldSession::Handle_NULL                     , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_GET_PLAYER_INFO,                             STATUS_NEVER,       PROCESS_INPLACE,        &WorldSession::Handle_NULL                     , PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_DF_GET_JOIN_STATUS,                              STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgGetStatus              , PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_DF_GET_SYSTEM_INFO,                              STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleDFGetSystemInfo           , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_GET_STATUS,                                  STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgGetStatus              , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_JOIN,                                        STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgJoinOpcode             , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_LEAVE,                                       STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgLeaveOpcode            , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_PROPOSAL_RESULT,                             STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgProposalResultOpcode   , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_SET_BOOT_VOTE,                               STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgSetBootVoteOpcode      , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_SET_COMMENT,                                 STATUS_UNHANDLED,   PROCESS_INPLACE,        &WorldSession::Handle_NULL                     , PROCESS_LOCAL);
-    DEFINE_OPCODE_HANDLER(CMSG_DFSET_ROLES,                                     STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleDfSetRolesOpcode          , PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_DFSET_ROLES,                                     STATUS_UNHANDLED,   PROCESS_INPLACE,        &WorldSession::Handle_NULL                     , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_TELEPORT,                                    STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgTeleportOpcode         , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_SEARCH_LFG_JOIN,                                 STATUS_UNHANDLED,   PROCESS_INPLACE,        &WorldSession::Handle_NULL                     , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_SEARCH_LFG_LEAVE,                                STATUS_UNHANDLED,   PROCESS_INPLACE,        &WorldSession::Handle_NULL                     , PROCESS_LOCAL);
@@ -1696,6 +1707,7 @@ void InitOpcodes()
     //////////////////////////////////////////////////////////////////////////
     DEFINE_OPCODE_HANDLER(CMSG_REQUEST_LFG_LIST_BLACKLIST,                      STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleRequestLfgListBlacklist    , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_LIST_JOIN,                                   STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgListJoin                , PROCESS_LOCAL);
+    DEFINE_OPCODE_HANDLER(CMSG_LFG_LIST_GET_STATUS,                             STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgListGetStatus          , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_LIST_UPDATE_REQUEST,                         STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgListUpdateRequest       , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_LIST_LEAVE,                                  STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgListLeave               , PROCESS_LOCAL);
     DEFINE_OPCODE_HANDLER(CMSG_LFG_LIST_SEARCH,                                 STATUS_LOGGEDIN,    PROCESS_THREADUNSAFE,   &WorldSession::HandleLfgListSearch              , PROCESS_LOCAL);
@@ -1878,7 +1890,7 @@ void InitOpcodes()
     //DEFINE_OPCODE_HANDLER(CMSG_UPDATE_MISSILE_TRAJECTORY,               STATUS_UNHANDLED, PROCESS_THREADUNSAFE, &WorldSession::HandleUpdateMissileTrajectory   );
     //DEFINE_OPCODE_HANDLER(CMSG_UPGRADE_ITEM,                            STATUS_LOGGEDIN,  PROCESS_THREADUNSAFE, &WorldSession::HandleUpgradeItemOpcode         );
     //DEFINE_OPCODE_HANDLER(CMSG_USED_FOLLOW,                             STATUS_UNHANDLED, PROCESS_INPLACE,      &WorldSession::Handle_NULL                     );
-    //DEFINE_OPCODE_HANDLER(CMSG_VOICE_SESSION_ENABLE,                    STATUS_AUTHED,    PROCESS_THREADUNSAFE, &WorldSession::HandleVoiceSessionEnableOpcode  );
+    DEFINE_OPCODE_HANDLER(CMSG_VOICE_SESSION_ENABLE,                    STATUS_AUTHED,    PROCESS_THREADUNSAFE, &WorldSession::HandleVoiceSessionEnableOpcode  , PROCESS_LOCAL);
     //DEFINE_OPCODE_HANDLER(CMSG_WARDEN_DATA,                             STATUS_UNHANDLED, PROCESS_THREADUNSAFE, &WorldSession::HandleWardenDataOpcode          , PROCESS_DISTANT_IF_NEED); // STATUS_AUTHED
     //DEFINE_OPCODE_HANDLER(CMSG_WARGAME_ACCEPT,                          STATUS_UNHANDLED, PROCESS_INPLACE,      &WorldSession::Handle_NULL                     );
     //DEFINE_OPCODE_HANDLER(CMSG_WARGAME_START,                           STATUS_UNHANDLED, PROCESS_INPLACE,      &WorldSession::Handle_NULL                     );

@@ -340,6 +340,7 @@ enum HitInfo
     HITINFO_RAGE_GAIN           = 0x00800000,
     /// 0x01000000
     /// 0x02000000
+    HITINFO_UNK12               = 0x00001000,
     HITINFO_MULTISTRIKE         = 0x04000000
     /// 0x08000000
     /// 0x10000000
@@ -379,6 +380,7 @@ class UnitAI;
 class Totem;
 class Transport;
 class Vehicle;
+class VehicleJoinEvent;
 class TransportBase;
 
 typedef std::list<Unit*> UnitList;
@@ -618,7 +620,7 @@ enum WeaponAttackType
 // Last check : 6.0.3
 enum CombatRating
 {
-    CR_UNUSED_1                         = 0,    //< Deprecated, CR_UNUSED_1 in PaperDollFrame.lua previously CR_WEAPON_SKILL
+    CR_WEAPON_SKILL                     = 0,
     CR_DEFENSE_SKILL                    = 1,    //< Deprecated
     CR_DODGE                            = 2,
     CR_PARRY                            = 3,
@@ -1183,6 +1185,19 @@ struct DeclinedName
     std::string name[MAX_DECLINED_NAME_CASES];
 };
 
+struct CharacterNameData
+{
+    ~CharacterNameData() { delete m_declinedName; }
+
+    std::string m_name;
+    uint8 m_class;
+    uint8 m_race;
+    uint8 m_gender;
+    uint8 m_level;
+    uint32 m_accountID;
+    DeclinedName const* m_declinedName = nullptr;
+};
+
 enum CurrentSpellTypes
 {
     CURRENT_MELEE_SPELL             = 0,
@@ -1535,6 +1550,11 @@ class Unit : public WorldObject
         void CleanupBeforeRemoveFromMap(bool finalCleanup);
         void CleanupsBeforeDelete(bool finalCleanup = true);                        // used in ~Creature/~Player (or before mass creature delete to remove cross-references to already deleted units)
 
+        void AddDelayedEvent(std::function<void()> p_Lambda, uint32 p_Delay = 0)
+        {
+            m_Events.AddEvent(new GenericDelayedEvent(p_Lambda), m_Events.CalculateTime(p_Delay));
+        }
+
         DiminishingLevels GetDiminishing(DiminishingGroup  group);
         void IncrDiminishing(DiminishingGroup group);
         float ApplyDiminishingToDuration(DiminishingGroup  group, int32 &duration, Unit* caster, DiminishingLevels Level, int32 limitduration);
@@ -1594,6 +1614,7 @@ class Unit : public WorldObject
         AttackerSet const& getAttackers() const { return m_attackers; }
         bool isAttackingPlayer() const;
         Unit* getVictim() const { return m_attacking; }
+        Unit* GetVictim() const { return m_attacking; }
         // Use this only when 100% sure there is a victim
         Unit* EnsureVictim() const
         {
@@ -1926,6 +1947,8 @@ class Unit : public WorldObject
         void CastSpell(GameObject* go, uint32 spellId, bool triggered, Item* castItem = NULL, AuraEffect* triggeredByAura = nullptr, uint64 originalCaster = 0);
         void CastSpell(Item* p_ItemTarget, uint32 p_SpellID, bool p_Triggered, Item* p_CastItem = nullptr, AuraEffect* p_TriggeredByAura = nullptr, uint64 p_OriginalCaster = 0);
 
+        void CastWithDelay(uint32 delay, Unit* victim, uint32 spellid, bool triggered = false, bool repeat = false);
+
         void CastCustomSpell(Unit* Victim, uint32 spellId, int32 const* bp0, int32 const* bp1, int32 const* bp2, bool triggered, Item* castItem= NULL, AuraEffect const* triggeredByAura = nullptr, uint64 originalCaster = 0);
         void CastCustomSpell(Unit* Victim, uint32 spellId, int32 const* bp0, int32 const* bp1, int32 const* bp2, int32 const* bp3, int32 const* bp4, int32 const* bp5, bool triggered, Item* castItem= NULL, AuraEffect const* triggeredByAura = nullptr, uint64 originalCaster = 0);
         void CastCustomSpell(uint32 spellId, SpellValueMod mod, int32 value, Unit* Victim = NULL, bool triggered = true, Item* castItem = NULL, AuraEffect const* triggeredByAura = nullptr, uint64 originalCaster = 0);
@@ -1995,6 +2018,11 @@ class Unit : public WorldObject
         void SendThreatListUpdate();
 
         void SendClearTarget();
+
+        bool IsAlive() const
+        {
+            return (m_deathState == ALIVE);
+        }
 
         void BuildHeartBeatMsg(WorldPacket* data) const;
 
@@ -2128,7 +2156,7 @@ class Unit : public WorldObject
         void RemoveAura(Aura* aur, AuraRemoveMode mode = AURA_REMOVE_BY_DEFAULT);
 
         void RemoveAurasDueToSpell(uint32 spellId, uint64 casterGUID = 0, uint32 reqEffMask = 0, AuraRemoveMode removeMode = AURA_REMOVE_BY_DEFAULT);
-        void RemoveAuraFromStack(uint32 spellId, uint64 casterGUID = 0, AuraRemoveMode removeMode = AURA_REMOVE_BY_DEFAULT);
+        void RemoveAuraFromStack(uint32 spellId, uint64 casterGUID = 0, AuraRemoveMode removeMode = AURA_REMOVE_BY_DEFAULT, int32 num = 1);
         void RemoveAurasDueToSpellByDispel(uint32 spellId, uint32 dispellerSpellId, uint64 casterGUID, Unit* dispeller, uint8 chargesRemoved = 1);
         void RemoveAurasDueToSpellBySteal(uint32 spellId, uint64 casterGUID, Unit* stealer);
         void RemoveAurasDueToItemSpell(Item* castItem, uint32 spellId);
@@ -2602,6 +2630,7 @@ class Unit : public WorldObject
         uint32 GetReducedThreatPercent() { return m_reducedThreatPercent; }
         Unit* GetMisdirectionTarget() { return m_misdirectionTargetGUID ? GetUnit(*this, m_misdirectionTargetGUID) : NULL; }
 
+        friend class VehicleJoinEvent;
         bool IsAIEnabled, NeedChangeAI;
         bool CreateVehicleKit(uint32 id, uint32 creatureEntry);
         void RemoveVehicleKit(bool dismount = false);
@@ -2772,6 +2801,8 @@ class Unit : public WorldObject
         uint64 GetPersonnalChauffeur() const { return m_PersonnalChauffeur; }
         uint64 m_PersonnalChauffeur;
 
+        uint8 m_cloudStacks;
+		
         void SetRooted(bool apply);
 
         Position m_LastAreaPosition;
@@ -2995,7 +3026,7 @@ class Unit : public WorldObject
 #endif /* CROSS */
 };
 
-namespace JadeCore
+namespace Trinity
 {
     // Binary predicate for sorting Units based on percent value of a power
     class PowerPctOrderPred

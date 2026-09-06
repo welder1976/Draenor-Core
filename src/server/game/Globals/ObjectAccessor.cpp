@@ -6,6 +6,9 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <boost/thread/shared_mutex.hpp>
+#include <boost/thread/locks.hpp>
+
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 
@@ -36,8 +39,8 @@ Creature** ObjectAccessor::m_CreaturesCache;
 
 ObjectAccessor::ObjectAccessor()
 {
-    k_PlayerCacheMaxGuid    = ConfigMgr::GetIntDefault("PlayersCache.Size",    1000000);
-    k_CreaturesCacheMaxGuid = ConfigMgr::GetIntDefault("CreaturesCache.Size", 30000000);
+    k_PlayerCacheMaxGuid    = sConfigMgr->GetIntDefault("PlayersCache.Size",    1000000);
+    k_CreaturesCacheMaxGuid = sConfigMgr->GetIntDefault("CreaturesCache.Size", 30000000);
 
     m_PlayersCache = new Player*[k_PlayerCacheMaxGuid];
     memset(m_PlayersCache, 0, sizeof(Player*) * k_PlayerCacheMaxGuid);
@@ -207,7 +210,7 @@ Unit* ObjectAccessor::FindUnit(uint64 guid)
 
 Player* ObjectAccessor::FindPlayerByName(const char* name)
 {
-    TRINITY_READ_GUARD(HashMapHolder<Player>::LockType, *HashMapHolder<Player>::GetLock());
+    std::shared_lock<std::shared_mutex> lock(*HashMapHolder<Player>::GetLock());
     std::string nameStr = name;
     std::transform(nameStr.begin(), nameStr.end(), nameStr.begin(), ::tolower);
     HashMapHolder<Player>::MapType const& m = GetPlayers();
@@ -277,7 +280,7 @@ GameObject* ObjectAccessor::FindGameObject(uint64 p_Guid)
 #endif /* CROSS */
 void ObjectAccessor::SaveAllPlayers()
 {
-    TRINITY_READ_GUARD(HashMapHolder<Player>::LockType, *HashMapHolder<Player>::GetLock());
+    std::shared_lock<std::shared_mutex> lock(*HashMapHolder<Player>::GetLock());
     HashMapHolder<Player>::MapType const& m = GetPlayers();
     for (HashMapHolder<Player>::MapType::const_iterator itr = m.begin(); itr != m.end(); ++itr)
         itr->second->SaveToDB();
@@ -285,7 +288,7 @@ void ObjectAccessor::SaveAllPlayers()
 
 Corpse* ObjectAccessor::GetCorpseForPlayerGUID(uint64 guid)
 {
-    TRINITY_READ_GUARD(ACE_RW_Thread_Mutex, i_corpseLock);
+    std::shared_lock<std::shared_mutex> lock(_corpseLock);
 
     Player2CorpsesMapType::iterator iter = i_player2corpse.find(guid);
     if (iter == i_player2corpse.end())
@@ -300,7 +303,9 @@ void ObjectAccessor::RemoveCorpse(Corpse* corpse)
 {
     ASSERT(corpse && corpse->GetType() != CORPSE_BONES);
 
-    //TODO: more works need to be done for corpse and other world object
+    std::unique_lock<std::shared_mutex> lock(_corpseLock);
+
+    /// @todo more works need to be done for corpse and other world object
     if (Map* map = corpse->FindMap())
     {
         corpse->DestroyForNearbyPlayers();
@@ -318,14 +323,12 @@ void ObjectAccessor::RemoveCorpse(Corpse* corpse)
 
     // Critical section
     {
-        TRINITY_WRITE_GUARD(ACE_RW_Thread_Mutex, i_corpseLock);
-
         Player2CorpsesMapType::iterator iter = i_player2corpse.find(corpse->GetOwnerGUID());
         if (iter == i_player2corpse.end()) // TODO: Fix this
             return;
 
         // build mapid*cellid -> guid_set map
-        CellCoord cellCoord = JadeCore::ComputeCellCoord(corpse->GetPositionX(), corpse->GetPositionY());
+        CellCoord cellCoord = Trinity::ComputeCellCoord(corpse->GetPositionX(), corpse->GetPositionY());
         sObjectMgr->DeleteCorpseCellData(corpse->GetMapId(), cellCoord.GetId(), GUID_LOPART(corpse->GetOwnerGUID()));
 
         i_player2corpse.erase(iter);
@@ -338,20 +341,20 @@ void ObjectAccessor::AddCorpse(Corpse* corpse)
 
     // Critical section
     {
-        TRINITY_WRITE_GUARD(ACE_RW_Thread_Mutex, i_corpseLock);
+        std::unique_lock<std::shared_mutex> lock(_corpseLock);
 
         ASSERT(i_player2corpse.find(corpse->GetOwnerGUID()) == i_player2corpse.end());
         i_player2corpse[corpse->GetOwnerGUID()] = corpse;
 
         // build mapid*cellid -> guid_set map
-        CellCoord cellCoord = JadeCore::ComputeCellCoord(corpse->GetPositionX(), corpse->GetPositionY());
+        CellCoord cellCoord = Trinity::ComputeCellCoord(corpse->GetPositionX(), corpse->GetPositionY());
         sObjectMgr->AddCorpseCellData(corpse->GetMapId(), cellCoord.GetId(), GUID_LOPART(corpse->GetOwnerGUID()), corpse->GetInstanceId());
     }
 }
 
 void ObjectAccessor::AddCorpsesToGrid(GridCoord const& gridpair, GridType& grid, Map* map)
 {
-    TRINITY_READ_GUARD(ACE_RW_Thread_Mutex, i_corpseLock);
+    std::shared_lock<std::shared_mutex> lock(_corpseLock);
 
     for (Player2CorpsesMapType::iterator iter = i_player2corpse.begin(); iter != i_player2corpse.end(); ++iter)
     {
@@ -383,7 +386,7 @@ Corpse* ObjectAccessor::ConvertCorpseForPlayer(uint64 player_guid, bool insignia
         return NULL;
     }
 
-    sLog->outDebug(LOG_FILTER_GENERAL, "Deleting Corpse and spawned bones.");
+    TC_LOG_DEBUG("misc", "Deleting Corpse and spawned bones.");
 
     // Map can be NULL
     Map* map = corpse->FindMap();
@@ -486,8 +489,8 @@ void ObjectAccessor::UnloadAll()
 
 /// Define the static members of HashMapHolder
 
-template <class T> std::unordered_map< uint64, T* > HashMapHolder<T>::m_objectMap;
-template <class T> typename HashMapHolder<T>::LockType HashMapHolder<T>::i_lock;
+template <class T> std::unordered_map< uint64, T* > HashMapHolder<T>::_objectMap;
+template <class T> std::shared_mutex HashMapHolder<T>::_lock;
 
 /// Global definitions for the hashmap storage
 

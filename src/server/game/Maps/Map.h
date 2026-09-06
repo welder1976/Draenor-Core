@@ -34,6 +34,7 @@ class WorldObject;
 class TempSummon;
 class Player;
 class CreatureGroup;
+class GridMap;
 struct ScriptInfo;
 struct ScriptAction;
 struct Position;
@@ -41,7 +42,8 @@ class Battleground;
 class MapInstanced;
 class InstanceMap;
 class Transport;
-namespace JadeCore { struct ObjectUpdater; }
+class WildBattlePetZonePools;
+namespace Trinity { struct ObjectUpdater; }
 
 struct ScriptAction
 {
@@ -51,20 +53,14 @@ struct ScriptAction
     ScriptInfo const* script;                               // pointer to static script data
 };
 
-union u_map_magic
-{
-    char asChar[4];
-    uint32 asUInt;
-};
-
 // ******************************************
 // Map file format defines
 // ******************************************
 struct map_fileheader
 {
-    u_map_magic mapMagic;
-    u_map_magic versionMagic;
-    u_map_magic buildMagic;
+    uint32 mapMagic;
+    uint32 versionMagic;
+    uint32 buildMagic;
     uint32 areaMapOffset;
     uint32 areaMapSize;
     uint32 heightMapOffset;
@@ -112,7 +108,7 @@ struct map_liquidHeader
     float  liquidLevel;
 };
 
-enum ZLiquidStatus
+enum ZLiquidStatus : uint32
 {
     LIQUID_MAP_NO_WATER     = 0x00000000,
     LIQUID_MAP_ABOVE_WATER  = 0x00000001,
@@ -148,67 +144,6 @@ enum InstanceLockTypes
 	INSTANCE_LOCK_STRICT,        // Used for: Vanilla + TBC raids, WOTLK Heroic raids, MOP Heroic raids excluding SoO, Mythic diff raids in WOD.
 	INSTANCE_LOCK_FLEXIBLE,      // Used for: Normal WotLK, MoP raids. SoO excluded.
 	INSTANCE_LOCK_LOOT_BASED     // Used for: LFR, Flex mode, SoO NM/HC, WoD NM/HC.
-};
-
-class GridMap
-{
-    uint32  _flags;
-    union{
-        float* m_V9;
-        uint16* m_uint16_V9;
-        uint8* m_uint8_V9;
-    };
-    union{
-        float* m_V8;
-        uint16* m_uint16_V8;
-        uint8* m_uint8_V8;
-    };
-    int16* _maxHeight;
-    int16* _minHeight;
-    // Height level data
-    float _gridHeight;
-    float _gridIntHeightMultiplier;
-
-    // Area data
-    uint16* _areaMap;
-
-    // Liquid data
-    float _liquidLevel;
-    uint16* _liquidEntry;
-    uint8* _liquidFlags;
-    float* _liquidMap;
-    uint16 _gridArea;
-    uint16 _liquidType;
-    uint8 _liquidOffX;
-    uint8 _liquidOffY;
-    uint8 _liquidWidth;
-    uint8 _liquidHeight;
-
-
-    bool loadAreaData(FILE* in, uint32 offset, uint32 size);
-    bool loadHeihgtData(FILE* in, uint32 offset, uint32 size);
-    bool loadLiquidData(FILE* in, uint32 offset, uint32 size);
-
-    // Get height functions and pointers
-    typedef float (GridMap::*GetHeightPtr) (float x, float y) const;
-    GetHeightPtr _gridGetHeight;
-    float getHeightFromFloat(float x, float y) const;
-    float getHeightFromUint16(float x, float y) const;
-    float getHeightFromUint8(float x, float y) const;
-    float getHeightFromFlat(float x, float y) const;
-
-public:
-    GridMap();
-    ~GridMap();
-    bool loadData(char* filaname);
-    void unloadData();
-
-    uint16 getArea(float x, float y) const;
-    inline float getHeight(float x, float y) const {return (this->*_gridGetHeight)(x, y);}
-    float getMinHeight(float x, float y) const;
-    float getLiquidLevel(float x, float y) const;
-    uint8 getTerrainType(float x, float y) const;
-    ZLiquidStatus getLiquidStatus(float x, float y, float z, uint8 ReqLiquidType, LiquidData* data = 0);
 };
 
 // GCC have alternative #pragma pack(N) syntax and old gcc version not support pack(push, N), also any gcc version not support it at some platform
@@ -270,7 +205,7 @@ class Map : public GridRefManager<NGridType>
         bool IsUpdating() const { return m_IsUpdating; }
 
 #endif /* CROSS */
-        void VisitNearbyCellsOf(WorldObject* obj, TypeContainerVisitor<JadeCore::ObjectUpdater, GridTypeMapContainer> &gridVisitor, TypeContainerVisitor<JadeCore::ObjectUpdater, WorldTypeMapContainer> &worldVisitor);
+        void VisitNearbyCellsOf(WorldObject* obj, TypeContainerVisitor<Trinity::ObjectUpdater, GridTypeMapContainer> &gridVisitor, TypeContainerVisitor<Trinity::ObjectUpdater, WorldTypeMapContainer> &worldVisitor);
         virtual void Update(const uint32);
 
         float GetVisibilityRange() const
@@ -298,13 +233,13 @@ class Map : public GridRefManager<NGridType>
 
         bool IsRemovalGrid(float x, float y) const
         {
-            GridCoord p = JadeCore::ComputeGridCoord(x, y);
+            GridCoord p = Trinity::ComputeGridCoord(x, y);
             return !getNGrid(p.x_coord, p.y_coord) || getNGrid(p.x_coord, p.y_coord)->GetGridState() == GRID_STATE_REMOVAL;
         }
 
         bool IsGridLoaded(float x, float y) const
         {
-            return IsGridLoaded(JadeCore::ComputeGridCoord(x, y));
+            return IsGridLoaded(Trinity::ComputeGridCoord(x, y));
         }
 
         bool GetUnloadLock(const GridCoord &p) const { return getNGrid(p.x_coord, p.y_coord)->getUnloadLock(); }
@@ -403,9 +338,9 @@ class Map : public GridRefManager<NGridType>
 
         bool IsRaidOrHeroicDungeon() const { return IsRaid() || IsHeroic(); }
         bool IsHeroic() const;
-        bool Is25ManRaid() const { return IsRaid() && (i_spawnMode == Difficulty::Difficulty25N || i_spawnMode == Difficulty::Difficulty25HC); }   // since 25man difficulties are 1 and 3, we can check them like that
-        bool IsLFR() const { return i_spawnMode == Difficulty::DifficultyRaidTool || i_spawnMode == Difficulty::DifficultyRaidLFR; }
-        bool IsChallengeMode() const { return i_spawnMode == Difficulty::DifficultyChallenge; }
+        bool Is25ManRaid() const { return IsRaid() && (i_spawnMode == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL || i_spawnMode == Difficulty::RAID_DIFFICULTY_25MAN_HEROIC); }   // since 25man difficulties are 1 and 3, we can check them like that
+        bool IsLFR() const { return i_spawnMode == Difficulty::RAID_DIFFICULTY_25MAN_LFR || i_spawnMode == Difficulty::DifficultyRaidLFR; }
+        bool IsChallengeMode() const { return i_spawnMode == Difficulty::DUNGEON_DIFFICULTY_CHALLENGE; }
         bool IsMythic() const { return i_spawnMode == Difficulty::DifficultyRaidMythic; }
 
         bool IsBattleground() const { return i_mapEntry && i_mapEntry->IsBattleground(); }
@@ -414,6 +349,7 @@ class Map : public GridRefManager<NGridType>
 
         uint32 Expansion() const { return i_mapEntry ? i_mapEntry->Expansion() : 0; }
 
+        WildBattlePetZonePools* GetWildBattlePetPools() const { return m_WildBattlePetPools; }
 
 		bool GetEntrancePos(int32 &mapid, float &x, float &y) { return i_mapEntry && i_mapEntry->GetEntrancePos(mapid, x, y); }
 
@@ -542,6 +478,7 @@ class Map : public GridRefManager<NGridType>
         void LoadMapAndVMap(int gx, int gy);
         void LoadVMap(int gx, int gy);
         void LoadMap(int gx, int gy, bool reload = false);
+        static void LoadMapImpl(Map* map, int gx, int gy, bool reload);
         void LoadMMap(int gx, int gy);
 
         void SetTimer(uint32 t) { i_gridExpiry = t < MIN_GRID_DELAY ? MIN_GRID_DELAY : t; }
@@ -585,7 +522,8 @@ class Map : public GridRefManager<NGridType>
                 l_Grid->setUnloadReferenceLock(on);
         }
 
-        ACE_Thread_Mutex Lock;
+        std::mutex _mapLock;
+        std::mutex _gridLock;
 
         MapEntry const* i_mapEntry;
         uint8 i_spawnMode;
@@ -643,6 +581,8 @@ class Map : public GridRefManager<NGridType>
         std::set<WorldObject*> i_objectsToRemove;
         std::map<WorldObject*, bool> i_objectsToSwitch;
         std::set<WorldObject*> i_worldObjects;
+
+        WildBattlePetZonePools* m_WildBattlePetPools;
 
         typedef std::multimap<time_t, ScriptAction> ScriptScheduleMap;
         ScriptScheduleMap m_scriptSchedule;
@@ -759,7 +699,7 @@ inline void Map::Visit(Cell const& cell, TypeContainerVisitor<T, CONTAINER>& vis
 template<class NOTIFIER>
 inline void Map::VisitAll(float const& x, float const& y, float radius, NOTIFIER& notifier, bool loadGrids)
 {
-    CellCoord p(JadeCore::ComputeCellCoord(x, y));
+    CellCoord p(Trinity::ComputeCellCoord(x, y));
     Cell cell(p);
     if (!loadGrids)
         cell.SetNoCreate();
@@ -774,7 +714,7 @@ inline void Map::VisitAll(float const& x, float const& y, float radius, NOTIFIER
 template<class NOTIFIER>
 inline void Map::VisitFirstFound(const float &x, const float &y, float radius, NOTIFIER &notifier, bool loadGrids)
 {
-    CellCoord p(JadeCore::ComputeCellCoord(x, y));
+    CellCoord p(Trinity::ComputeCellCoord(x, y));
     Cell cell(p);
     if (!loadGrids)
         cell.SetNoCreate();
@@ -791,7 +731,7 @@ inline void Map::VisitFirstFound(const float &x, const float &y, float radius, N
 template<class NOTIFIER>
 inline void Map::VisitWorld(const float &x, const float &y, float radius, NOTIFIER &notifier, bool loadGrids)
 {
-    CellCoord p(JadeCore::ComputeCellCoord(x, y));
+    CellCoord p(Trinity::ComputeCellCoord(x, y));
     Cell cell(p);
     if (!loadGrids)
         cell.SetNoCreate();
@@ -803,7 +743,7 @@ inline void Map::VisitWorld(const float &x, const float &y, float radius, NOTIFI
 template<class NOTIFIER>
 inline void Map::VisitGrid(const float &x, const float &y, float radius, NOTIFIER &notifier, bool loadGrids)
 {
-    CellCoord p(JadeCore::ComputeCellCoord(x, y));
+    CellCoord p(Trinity::ComputeCellCoord(x, y));
     Cell cell(p);
     if (!loadGrids)
         cell.SetNoCreate();

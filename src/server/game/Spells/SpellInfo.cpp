@@ -2238,7 +2238,7 @@ SpellCastResult SpellInfo::CheckShapeshift(uint32 p_Shapeshift) const
         shapeInfo = sSpellShapeshiftFormStore.LookupEntry(p_Shapeshift);
         if (!shapeInfo)
         {
-            sLog->outError(LOG_FILTER_SPELLS_AURAS, "GetErrorAtShapeshiftedCast: unknown shapeshift %u", p_Shapeshift);
+            TC_LOG_ERROR("spells", "GetErrorAtShapeshiftedCast: unknown shapeshift %u", p_Shapeshift);
             return SPELL_CAST_OK;
         }
         actAsShifted = !(shapeInfo->m_Flags & 1);            // shapeshift acts as normal form for spells
@@ -2844,10 +2844,6 @@ AuraStateType SpellInfo::GetAuraState() const
     if (GetCategory() == 1133)
         return AURA_STATE_FAERIE_FIRE;
 
-    // Victorious
-    if (SpellFamilyName == SPELLFAMILY_WARRIOR &&  SpellFamilyFlags[1] & 0x00040000)
-        return AURA_STATE_WARRIOR_VICTORY_RUSH;
-
     // Swiftmend state on Regrowth & Rejuvenation
     if (SpellFamilyName == SPELLFAMILY_DRUID && SpellFamilyFlags[0] & 0x50)
         return AURA_STATE_SWIFTMEND;
@@ -2876,6 +2872,8 @@ AuraStateType SpellInfo::GetAuraState() const
         case 71465: // Divine Surge
         case 50241: // Evasive Charges
             return AURA_STATE_UNKNOWN22;
+        case 32216: // Victorious
+            return AURA_STATE_WARRIOR_VICTORY_RUSH;
         default:
             break;
     }
@@ -3345,7 +3343,7 @@ void SpellInfo::CalcPowerCost(Unit const* caster, SpellSchoolMask schoolMask, in
             else if (PowerType < MAX_POWERS) // Else drain all power
                 m_powerCost[POWER_TO_INDEX(PowerType)] = caster->GetPower(Powers(PowerType));
             else
-                sLog->outAshran("SpellInfo::CalcPowerCost: Unknown power type [%u] with spell [%u]", PowerType, Id);
+                TC_LOG_ERROR("server.worldserver", "SpellInfo::CalcPowerCost: Unknown power type [%u] with spell [%u]", PowerType, Id);
         }
     }
 
@@ -3380,10 +3378,10 @@ void SpellInfo::CalcPowerCost(Unit const* caster, SpellSchoolMask schoolMask, in
                     break;
                 case POWER_RUNES:
                 case POWER_RUNIC_POWER:
-                    sLog->outDebug(LOG_FILTER_SPELLS_AURAS, "CalculateManaCost: Not implemented yet!");
+                    TC_LOG_DEBUG("spells", "CalculateManaCost: Not implemented yet!");
                     break;
                 default:
-                    sLog->outAshran("SpellInfo::CalcPowerCost: Unknown power type [%u] with spell [%u]", PowerType, Id);
+                    TC_LOG_ERROR("server.worldserver", "SpellInfo::CalcPowerCost: Unknown power type [%u] with spell [%u]", PowerType, Id);
                     break;
             }
         }
@@ -3406,10 +3404,10 @@ void SpellInfo::CalcPowerCost(Unit const* caster, SpellSchoolMask schoolMask, in
                     break;
                 case POWER_RUNES:
                 case POWER_RUNIC_POWER:
-                    sLog->outDebug(LOG_FILTER_SPELLS_AURAS, "CalculateManaCost: Not implemented yet!");
+                    TC_LOG_DEBUG("spells", "CalculateManaCost: Not implemented yet!");
                     break;
                 default:
-                    sLog->outAshran("SpellInfo::CalcPowerCost: Unknown power type [%u] with spell [%u]", PowerType, Id);
+                    TC_LOG_ERROR("server.worldserver", "SpellInfo::CalcPowerCost: Unknown power type [%u] with spell [%u]", PowerType, Id);
                     break;
             }
         }
@@ -4154,11 +4152,6 @@ SpellCooldownsEntry const* SpellInfo::GetSpellCooldowns() const
     return SpellCooldownsId ? sSpellCooldownsStore.LookupEntry(SpellCooldownsId) : nullptr;
 }
 
-SpellEffectEntry const* SpellEntry::GetSpellEffect(uint32 eff, uint32 difficulty) const
-{
-    return GetSpellEffectEntry(Id, eff, difficulty);
-}
-
 void SpellInfo::SetDurationIndex(uint32 index)
 {
     SpellDurationEntry const* durationIndex = sSpellDurationStore.LookupEntry(index);
@@ -4184,6 +4177,11 @@ void SpellInfo::SetCastTimeIndex(uint32 index)
         return;
 
     CastTimeEntry = castTimeIndex;
+}
+
+SpellEffectEntry const* SpellEntry::GetSpellEffect(uint32 eff, uint32 difficulty) const
+{
+    return GetSpellEffectEntry(Id, eff, difficulty);
 }
 
 void SpellInfo::_UnloadImplicitTargetConditionLists()
@@ -5376,4 +5374,19 @@ uint32 SpellInfo::GetSpellVisualID(Unit const* p_Caster) const
         l_SpellVisualId = GetSpellXSpellVisualId(p_Caster);
 
     return (uint32)l_SpellVisualId;
+}
+
+bool SpellInfo::IsSealSpell() const
+{
+    //Collection of all the seal family flags. No other paladin spell has any of those.
+    //Collection of all the seal Id. No other paladin spell has any of those.
+    switch (Id)
+    {
+        case 20154:
+        case 20165:
+        case 20164:
+        case 31801:
+            return true;
+    }
+    return false;
 }

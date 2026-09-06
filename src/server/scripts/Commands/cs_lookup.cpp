@@ -30,7 +30,7 @@ public:
         static ChatCommand lookupPlayerCommandTable[] =
         {
             { "ip",             SEC_GAMEMASTER,     true,  &HandleLookupPlayerIpCommand,        "", NULL },
-            { "account",        SEC_GAMEMASTER,     true,  &HandleLookupPlayerAccountCommand,   "", NULL },
+            { "account",        SEC_GAMEMASTER,     true,  &HandleLookupPlayerEmailCommand,     "", NULL },
             { "email",          SEC_GAMEMASTER,     true,  &HandleLookupPlayerEmailCommand,     "", NULL },
             { NULL,             0,                  false, NULL,                                "", NULL }
         };
@@ -1168,26 +1168,6 @@ public:
         return LookupPlayerSearchCommand(result, limit, handler);
     }
 
-    static bool HandleLookupPlayerAccountCommand(ChatHandler* handler, char const* args)
-    {
-        if (!*args)
-            return false;
-
-        std::string account = strtok((char*)args, " ");
-        char* limitStr = strtok(NULL, " ");
-        int32 limit = limitStr ? atoi(limitStr) : -1;
-
-        if (!AccountMgr::normalizeString
-            (account))
-            return false;
-
-        PreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_SEL_ACCOUNT_LIST_BY_NAME);
-        stmt->setString(0, account);
-        PreparedQueryResult result = LoginDatabase.Query(stmt);
-
-        return LookupPlayerSearchCommand(result, limit, handler);
-    }
-
     static bool HandleLookupPlayerEmailCommand(ChatHandler* handler, char const* args)
     {
         if (!*args)
@@ -1243,6 +1223,9 @@ public:
                     uint32 guid             = characterFields[0].GetUInt32();
                     std::string name        = characterFields[1].GetString();
 
+                    if (sObjectMgr->GetPlayerByLowGUID(guid) != NULL) // online
+                        handler->PSendSysMessage(363, name.c_str(), guid);
+                    else
                     handler->PSendSysMessage(LANG_LOOKUP_PLAYER_CHARACTER, name.c_str(), guid);
                     ++counter;
                 }

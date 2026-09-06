@@ -234,13 +234,6 @@ class boss_stone_guard_controler : public CreatureScript
                                 me->CastSpell(l_Player, SPELL_STONE_GUARD_BONUS, true);
                         }
 
-                        if (IsLFR() && !l_PlrList.isEmpty())
-                        {
-                            Player* l_Player = l_PlrList.begin()->getSource();
-                            if (l_Player && l_Player->GetGroup())
-                                sLFGMgr->AutomaticLootAssignation(me, l_Player->GetGroup());
-                        }
-
                         break;
                     }
                     case ACTION_POWER_DOWN:
@@ -878,7 +871,7 @@ class boss_generic_guardian : public CreatureScript
                                         if (tempPlayerList.size() < 2)
                                             break;
 
-                                        JadeCore::Containers::RandomResizeList(tempPlayerList, 2);
+                                        Trinity::Containers::RandomResizeList(tempPlayerList, 2);
                                     
                                         Player* firstPlayer  = *tempPlayerList.begin();
                                         Player* SecondPlayer = *(++(tempPlayerList.begin()));
@@ -1483,8 +1476,8 @@ class at_amethyst_pool : public AreaTriggerEntityScript
             float l_Radius = 5.0f;
             Unit* l_Caster = p_AreaTrigger->GetCaster();
 
-            JadeCore::NearestAttackableUnitInObjectRangeCheck u_check(p_AreaTrigger, l_Caster, l_Radius);
-            JadeCore::UnitListSearcher<JadeCore::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, u_check);
+            Trinity::NearestAttackableUnitInObjectRangeCheck u_check(p_AreaTrigger, l_Caster, l_Radius);
+            Trinity::UnitListSearcher<Trinity::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, u_check);
             p_AreaTrigger->VisitNearbyObject(l_Radius, l_Searcher);
 
             if (!l_TargetList.empty())
@@ -1509,8 +1502,8 @@ class at_amethyst_pool : public AreaTriggerEntityScript
             if (!l_Caster)
                 return;
 
-            JadeCore::NearestAttackableUnitInObjectRangeCheck u_check(p_AreaTrigger, l_Caster, l_Radius);
-            JadeCore::UnitListSearcher<JadeCore::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, u_check);
+            Trinity::NearestAttackableUnitInObjectRangeCheck u_check(p_AreaTrigger, l_Caster, l_Radius);
+            Trinity::UnitListSearcher<Trinity::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, u_check);
             p_AreaTrigger->VisitNearbyObject(l_Radius, l_Searcher);
 
             for (Unit* l_Target : l_TargetList)

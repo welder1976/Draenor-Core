@@ -54,55 +54,80 @@ namespace AccountMgr
         shaX.Finalize();
 
         BigNumber G;
-        G.SetBinary(BNet2::SRP6a_G, sizeof(BNet2::SRP6a_G));
+        G.SetBinary(SRP6a_G, sizeof(SRP6a_G));
         BigNumber N;
-        N.SetBinary(BNet2::SRP6a_N, sizeof(BNet2::SRP6a_N));
+        N.SetBinary(SRP6a_N, sizeof(SRP6a_N));
         BigNumber X;
         X.SetBinary(shaX.GetDigest(), shaX.GetLength());
         BigNumber res = G.ModExp(X, N);
-        std::string temp = ByteArrayToHexStr(X.AsByteArray(), 32);
+        std::string temp = ByteArrayToHexStr(X.AsByteArray().get(), 32);
 
-        return ByteArrayToHexStr(res.AsByteArray(), res.GetNumBytes());
+        return ByteArrayToHexStr(res.AsByteArray().get(), res.GetNumBytes());
     }
 
 #ifndef CROSS
     AccountOpResult CreateAccount(std::string username, std::string password)
     {
-        if (utf8length(username) > MAX_ACCOUNT_STR)
-            return AOR_NAME_TOO_LONG;                           // Username's too long
+        if (utf8length(username) > MAX_EMAIL_STR)
+            return AOR_NAME_TOO_LONG;
 
-        if (utf8length(password) > MAX_PASSWORD_LENGTH)
+        if (utf8length(password) > MAX_PASS_STR)
             return AOR_PASS_TOO_LONG;
 
         normalizeString(username);
         normalizeString(password);
 
-        if (GetId(username))
-            return AOR_NAME_ALREDY_EXIST;                       // Username does already exist
+        // Battle.net email must already be validated by the command (@ required)
+        PreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_SEL_BNET_ACCOUNT_ID_BY_EMAIL);
+        stmt->setString(0, username);
+        if (LoginDatabase.Query(stmt))
+            return AOR_NAME_ALREDY_EXIST;
 
-        // SRP6aCalculatePasswordVerifier requires a lowercase email
-        normalizeString(username, false);
+        std::string gameUsername = username + "#1";
+        if (GetId(gameUsername))
+            return AOR_NAME_ALREDY_EXIST;
 
-        std::string salt = SRP6aGenerateSalt32();
-        std::string passwordVerifier = SRP6aCalculatePasswordVerifier(username, password, salt);
+        SHA1Hash gameSha;
+        gameSha.Initialize();
+        gameSha.UpdateData(gameUsername);
+        gameSha.UpdateData(":");
+        gameSha.UpdateData(password);
+        gameSha.Finalize();
+        std::string gamePassHash = ByteArrayToHexStr(gameSha.GetDigest(), gameSha.GetLength());
 
-        // everything else requires an uppercase email
-        normalizeString(username, true);
-
-        PreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_INS_ACCOUNT);
-
+        stmt = LoginDatabase.GetPreparedStatement(LOGIN_INS_BNET_ACCOUNT);
         stmt->setString(0, username);
         stmt->setString(1, CalculateShaPassHash(username, password));
-        stmt->setString(2, passwordVerifier);
-        stmt->setString(3, salt);
+        LoginDatabase.DirectExecute(stmt);
 
-        LoginDatabase.Execute(stmt);
+        stmt = LoginDatabase.GetPreparedStatement(LOGIN_SEL_BNET_ACCOUNT_ID_BY_EMAIL);
+        stmt->setString(0, username);
+        PreparedQueryResult bnetResult = LoginDatabase.Query(stmt);
+        if (!bnetResult)
+            return AOR_DB_INTERNAL_ERROR;
+
+        uint32 bnetId = (*bnetResult)[0].GetUInt32();
+
+        stmt = LoginDatabase.GetPreparedStatement(LOGIN_INS_ACCOUNT);
+        stmt->setString(0, gameUsername);
+        stmt->setString(1, gamePassHash);
+        stmt->setString(2, username);
+        stmt->setUInt32(3, bnetId);
+        stmt->setUInt8(4, 1);
+        LoginDatabase.DirectExecute(stmt);
+
+        uint32 gameAccountId = GetId(gameUsername);
+        if (!gameAccountId)
+            return AOR_DB_INTERNAL_ERROR;
+
+        LoginDatabase.DirectPExecute(
+            "INSERT INTO battlenet_account_gameaccounts (battlenetAccountId, gameAccountId) VALUES (%u, %u)",
+            bnetId, gameAccountId);
 
         stmt = LoginDatabase.GetPreparedStatement(LOGIN_INS_REALM_CHARACTERS_INIT);
-
         LoginDatabase.Execute(stmt);
 
-        return AOR_OK;                                          // Everything's fine
+        return AOR_OK;
     }
 
     AccountOpResult DeleteAccount(uint32 accountId)
@@ -188,10 +213,10 @@ namespace AccountMgr
         if (!result)
             return AOR_NAME_NOT_EXIST;
 
-        if (utf8length(newUsername) > MAX_ACCOUNT_STR)
+        if (utf8length(newUsername) > MAX_EMAIL_STR)
             return AOR_NAME_TOO_LONG;
 
-        if (utf8length(newPassword) > MAX_PASSWORD_LENGTH)
+        if (utf8length(newPassword) > MAX_PASS_STR)
             return AOR_PASS_TOO_LONG;
 
         // SRP6aCalculatePasswordVerifier requires a lowercase email
@@ -224,7 +249,7 @@ namespace AccountMgr
         if (!GetName(accountId, username))
             return AOR_NAME_NOT_EXIST;                          // Account doesn't exist
 
-        if (utf8length(newPassword) > MAX_PASSWORD_LENGTH)
+        if (utf8length(newPassword) > MAX_PASS_STR)
             return AOR_PASS_TOO_LONG;
 
         // SRP6aCalculatePasswordVerifier requires a lowercase email
@@ -312,9 +337,9 @@ namespace AccountMgr
     }
 
 #ifndef CROSS
-    uint32 GetCharactersCount(uint32 accountId)
+    uint32 AccountMgr::GetCharactersCount(uint32 accountId)
     {
-        // Check character count
+        // check character count
         PreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_SUM_CHARS);
         stmt->setUInt32(0, accountId);
         PreparedQueryResult result = CharacterDatabase.Query(stmt);
@@ -325,9 +350,9 @@ namespace AccountMgr
 
     bool normalizeString(std::string& utf8String, bool upper /* = true */)
     {
-        wchar_t buffer[MAX_ACCOUNT_STR + 1];
+        wchar_t buffer[MAX_EMAIL_STR + 1];
 
-        size_t maxLength = MAX_ACCOUNT_STR;
+        size_t maxLength = MAX_EMAIL_STR;
         if (!Utf8toWStr(utf8String, buffer, maxLength))
             return false;
 #ifdef _MSC_VER
@@ -337,20 +362,22 @@ namespace AccountMgr
 #ifdef _MSC_VER
 #pragma warning(default: 4996)
 #endif
-
         return WStrToUtf8(buffer, maxLength, utf8String);
     }
 
-    std::string CalculateShaPassHash(std::string& name, std::string& password)
+    std::string CalculateShaPassHash(const std::string& name, const std::string& password)
     {
-        SHA1Hash sha;
-        sha.Initialize();
-        sha.UpdateData(name);
+        SHA256Hash email;
+        email.UpdateData(name);
+        email.Finalize();
+
+        SHA256Hash sha;
+        sha.UpdateData(ByteArrayToHexStr(email.GetDigest(), email.GetLength()));
         sha.UpdateData(":");
         sha.UpdateData(password);
         sha.Finalize();
 
-        return ByteArrayToHexStr(sha.GetDigest(), sha.GetLength());
+        return ByteArrayToHexStr(sha.GetDigest(), sha.GetLength(), true);
     }
 
     bool IsPlayerAccount(uint32 gmlevel)

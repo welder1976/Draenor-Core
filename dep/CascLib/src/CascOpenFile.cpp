@@ -57,7 +57,7 @@ static TCascFile * CreateFileHandle(TCascStorage * hs, PCASC_INDEX_ENTRY pIndexE
         hf->ArchiveIndex = (DWORD)(FileOffset >> hs->KeyMapping[0].SegmentBits);
         hf->HeaderOffset = (DWORD)(FileOffset & FileOffsMask);
         hf->szClassName = "TCascFile";
-        
+
         // Copy the file size. Note that for all files except ENCODING,
         // this is the compressed file size
         hf->CompressedSize = ConvertBytesToInteger_4_LE(pIndexEntry->FileSizeLE);
@@ -268,6 +268,28 @@ bool WINAPI CascOpenFile(HANDLE hStorage, const char * szFileName, DWORD dwLocal
     if(nError != ERROR_SUCCESS)
         SetLastError(nError);
     return (nError == ERROR_SUCCESS);
+}
+
+DWORD WINAPI CascGetFileId(HANDLE hStorage, const char * szFileName)
+{
+    TCascStorage * hs;
+
+    // Validate the storage handle
+    hs = IsValidStorageHandle(hStorage);
+    if (hs == NULL)
+    {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return false;
+    }
+
+    // Validate the other parameters
+    if (szFileName == NULL || szFileName[0] == 0)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return false;
+    }
+
+    return RootHandler_GetFileId(hs->pRootHandler, szFileName);
 }
 
 bool WINAPI CascCloseFile(HANDLE hFile)

@@ -383,7 +383,7 @@ class boss_kologarn : public CreatureScript
                             return 0;
                     }
 
-                    return JadeCore::Containers::SelectRandomContainerElement(playerList);
+                    return Trinity::Containers::SelectRandomContainerElement(playerList);
                 }
                 else
                     return 0;
@@ -671,10 +671,10 @@ class spell_ulduar_cancel_stone_grip: public SpellScriptLoader
 
                 switch (target->GetMap()->GetDifficultyID())
                 {
-                    case Difficulty::Difficulty10N:
+                    case Difficulty::RAID_DIFFICULTY_10MAN_NORMAL:
                         target->RemoveAura(GetSpellInfo()->Effects[EFFECT_0].CalcValue());
                         break;
-                    case Difficulty::Difficulty25N:
+                    case Difficulty::RAID_DIFFICULTY_25MAN_NORMAL:
                         target->RemoveAura(GetSpellInfo()->Effects[EFFECT_1].CalcValue());
                         break;
                     default:

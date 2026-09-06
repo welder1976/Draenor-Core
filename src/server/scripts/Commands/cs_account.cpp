@@ -15,6 +15,7 @@ EndScriptData */
 
 #include "ScriptMgr.h"
 #include "AccountMgr.h"
+#include "BattlenetAccountMgr.h"
 #include "Chat.h"
 #ifndef CROSS
 #include "BattlepayPacketFactory.h"
@@ -51,9 +52,16 @@ public:
             { "",               SEC_PLAYER,         false, &HandleAccountCommand,              "", NULL },
             { NULL,             SEC_PLAYER,         false, NULL,                               "", NULL }
         };
+        static ChatCommand bnetAccountCommandTable[] =
+        {
+            { "create",         SEC_CONSOLE,        true,  &HandleAccountCreateCommand,        "", NULL },
+            { NULL,             SEC_PLAYER,         false, NULL,                               "", NULL }
+        };
         static ChatCommand commandTable[] =
         {
             { "account",        SEC_PLAYER,         true,  NULL,     "", accountCommandTable  },
+            { "bnetaccount",    SEC_CONSOLE,        true,  NULL,     "", bnetAccountCommandTable },
+            { "bnetacc",        SEC_CONSOLE,        true,  NULL,     "", bnetAccountCommandTable },
             { NULL,             SEC_PLAYER,         false, NULL,                     "", NULL }
         };
         return commandTable;
@@ -104,18 +112,23 @@ public:
         if (!accountName || !password)
             return false;
 
-        AccountOpResult result = AccountMgr::CreateAccount(std::string(accountName), std::string(password));
+        if (!strchr(accountName, '@'))
+        {
+            handler->SendSysMessage(LANG_ACCOUNT_INVALID_BNET_NAME);
+            handler->SetSentErrorMessage(true);
+            return false;
+        }
+
+        AccountOpResult result = Battlenet::AccountMgr::CreateBattlenetAccount(std::string(accountName), std::string(password));
         switch (result)
         {
             case AOR_OK:
+            {
                 handler->PSendSysMessage(LANG_ACCOUNT_CREATED, accountName);
-                if (handler->GetSession())
-                {
-                    sLog->outInfo(LOG_FILTER_CHARACTER, "Account: %d (IP: %s) Character:[%s] (GUID: %u) Change Password."
-                        , handler->GetSession()->GetAccountId(),handler->GetSession()->GetRemoteAddress().c_str()
-                        , handler->GetSession()->GetPlayer()->GetName(), handler->GetSession()->GetPlayer()->GetGUIDLow());
-                }
+                uint32 bnetId = Battlenet::AccountMgr::GetId(accountName);
+                handler->PSendSysMessage("Battle.net login: %s | Game account: %u#1", accountName, bnetId);
                 break;
+            }
             case AOR_NAME_TOO_LONG:
                 handler->SendSysMessage(LANG_ACCOUNT_TOO_LONG);
                 handler->SetSentErrorMessage(true);
@@ -126,6 +139,10 @@ public:
                 return false;
             case AOR_DB_INTERNAL_ERROR:
                 handler->PSendSysMessage(LANG_ACCOUNT_NOT_CREATED_SQL_ERROR, accountName);
+                handler->SetSentErrorMessage(true);
+                return false;
+            case AOR_PASS_TOO_LONG:
+                handler->SendSysMessage(LANG_PASSWORD_TOO_LONG);
                 handler->SetSentErrorMessage(true);
                 return false;
             default:
@@ -543,7 +560,11 @@ public:
     {
 #ifndef CROSS
         if (!*args)
+        {
+            handler->SendSysMessage(LANG_CMD_SYNTAX);
+            handler->SetSentErrorMessage(true);
             return false;
+        }
 
         ///- Get the command line arguments
         char* account = strtok((char*)args, " ");

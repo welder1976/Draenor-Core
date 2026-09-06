@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -12,21 +12,40 @@
 
 SHA1Hash::SHA1Hash()
 {
-    SHA1_Init(&mC);
-    memset(mDigest, 0, SHA_DIGEST_LENGTH * sizeof(uint8));
+    m_ctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(m_ctx, EVP_sha1(), nullptr);
+}
+SHA1Hash::SHA1Hash(const SHA1Hash& other) : SHA1Hash() // copy
+{
+    EVP_MD_CTX_copy_ex(m_ctx, other.m_ctx);
+    std::memcpy(m_digest, other.m_digest, SHA_DIGEST_LENGTH);
+}
+SHA1Hash::SHA1Hash(SHA1Hash&& other) : SHA1Hash() // move
+{
+    Swap(other);
+}
+SHA1Hash& SHA1Hash::operator=(SHA1Hash other) // assign
+{
+    Swap(other);
+    return *this;
 }
 
 SHA1Hash::~SHA1Hash()
 {
-    SHA1_Init(&mC);
+    EVP_MD_CTX_free(m_ctx);
 }
-
-void SHA1Hash::UpdateData(const uint8 *dta, int len)
+void SHA1Hash::Swap(SHA1Hash& other) throw()
 {
-    SHA1_Update(&mC, dta, len);
+    std::swap(m_ctx, other.m_ctx);
+    std::swap(m_digest, other.m_digest);
 }
 
-void SHA1Hash::UpdateData(const std::string &str)
+void SHA1Hash::UpdateData(const uint8* dta, int len)
+{
+    EVP_DigestUpdate(m_ctx, dta, len);
+}
+
+void SHA1Hash::UpdateData(const std::string& str)
 {
     UpdateData((uint8 const*)str.c_str(), str.length());
 }
@@ -40,7 +59,7 @@ void SHA1Hash::UpdateBigNumbers(BigNumber* bn0, ...)
     bn = bn0;
     while (bn)
     {
-        UpdateData(bn->AsByteArray(), bn->GetNumBytes());
+        UpdateData(bn->AsByteArray().get(), bn->GetNumBytes());
         bn = va_arg(v, BigNumber*);
     }
     va_end(v);
@@ -48,11 +67,11 @@ void SHA1Hash::UpdateBigNumbers(BigNumber* bn0, ...)
 
 void SHA1Hash::Initialize()
 {
-    SHA1_Init(&mC);
+    EVP_DigestInit(m_ctx, EVP_sha1());
 }
 
 void SHA1Hash::Finalize(void)
 {
-    SHA1_Final(mDigest, &mC);
+    uint32 length = SHA_DIGEST_LENGTH;
+    EVP_DigestFinal_ex(m_ctx, m_digest, &length);
 }
-

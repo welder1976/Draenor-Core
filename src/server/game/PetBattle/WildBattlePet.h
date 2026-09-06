@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -33,7 +33,7 @@ struct WildBattlePetPoolTemplate
     std::list<uint64>            ToBeReplaced;
     std::list<uint64>            Replaced;
 
-    /// @TODO: replace this
+    /// Temporary mapping for pet replacement mechanics - may need refactoring
     std::map<uint64, uint64>                                ReplacedRelation;
     std::map<uint64, std::shared_ptr<BattlePetInstance>>    ReplacedBattlePetInstances;
 };
@@ -55,8 +55,10 @@ class WildBattlePetZonePools
         void ReplaceCreature(Creature* p_Creature, WildBattlePetPoolTemplate* p_Template);
         void UnreplaceCreature(Creature* p_Creature, WildBattlePetPoolTemplate* p_Template);
 
+        bool IsWildPet(Creature* p_Creature);
+        std::shared_ptr<BattlePetInstance> GetWildBattlePet(Creature* p_Creature);
+
     public:
-        uint32 ZoneID;
         uint32 MapID;
 
         std::vector<WildBattlePetPoolTemplate> m_Templates;
@@ -66,30 +68,22 @@ class WildBattlePetMgr
 {
     public:
         WildBattlePetMgr();
+        
+        static WildBattlePetMgr* instance()
+        {
+            static WildBattlePetMgr* instance = new WildBattlePetMgr();
+            return instance;
+        }
 
         void Load();
 
-        void PopulateAll();
-        void PopulateMap(uint32 p_MapID);
-        void DepopulateMap(uint32 p_MapID);
-
-        void OnAddToMap(Creature* p_Creature);
-        void OnRemoveToMap(Creature* p_Creature);
-
-        bool IsWildPet(Creature* p_Creature);
-        std::shared_ptr<BattlePetInstance> GetWildBattlePet(Creature* p_Creature);
-
-        void EnterInBattle(Creature* p_Creature);
-        void LeaveBattle(Creature* p_Creature, bool p_Defeated);
-
-        void Update(uint32 p_TimeDiff);
+        WildBattlePetZonePools GetZonePoolsForNewMap(uint32 p_MapId);
 
     private:
-        ///        map              zone          pools
-        std::map<uint32, std::map<uint32, WildBattlePetZonePools>>  m_PoolsByMap;
-        IntervalTimer                                               m_UpdateTime;
+        ///        map       pools
+        std::map<uint32, WildBattlePetZonePools>  m_PoolsByMap;
 };
 
-#define sWildBattlePetMgr ACE_Singleton<WildBattlePetMgr, ACE_Null_Mutex>::instance()
+#define sWildBattlePetMgr WildBattlePetMgr::instance()
 
 #endif

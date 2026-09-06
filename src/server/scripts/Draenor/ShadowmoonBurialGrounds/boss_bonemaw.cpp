@@ -276,7 +276,7 @@ class boss_bonemaw : public CreatureScript
 
 									if (l_Itr->IsWithinDistInMap(l_BonemawMouth, 2.0f))
 									{
-										l_Itr->NearTeleportTo(1874.083f, -513.131f, 195.507, l_Itr->GetOrientation());
+										l_Itr->NearTeleportTo(1874.083f, -513.131f, 195.507f, l_Itr->GetOrientation());
 										l_Itr->AddAura(eBoneMawSpells::SpellInhaleDamage, l_Itr);
 										l_ListPlayersInhale.remove(l_Itr);
 									}
@@ -902,8 +902,8 @@ public:
         if (m_Diff <= p_Time)
         {
             std::list<Player*> l_ListPlayers;
-            JadeCore::AnyPlayerInObjectRangeCheck check(p_AreaTrigger, 1.5f);
-            JadeCore::PlayerListSearcher<JadeCore::AnyPlayerInObjectRangeCheck> searcher(p_AreaTrigger, l_ListPlayers, check);
+            Trinity::AnyPlayerInObjectRangeCheck check(p_AreaTrigger, 1.5f);
+            Trinity::PlayerListSearcher<Trinity::AnyPlayerInObjectRangeCheck> searcher(p_AreaTrigger, l_ListPlayers, check);
             p_AreaTrigger->VisitNearbyObject(2.0f, searcher);
             if (!l_ListPlayers.empty())
             {

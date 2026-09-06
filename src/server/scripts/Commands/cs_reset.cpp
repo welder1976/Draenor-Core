@@ -13,6 +13,9 @@ Comment: All reset related commands
 Category: commandscripts
 EndScriptData */
 
+#include "ObjectMgr.h"
+#include "AccountMgr.h"
+#include "World.h"
 #include "ScriptMgr.h"
 #include "Chat.h"
 #include "ObjectAccessor.h"
@@ -66,7 +69,7 @@ public:
         ChrClassesEntry const* classEntry = sChrClassesStore.LookupEntry(player->getClass());
         if (!classEntry)
         {
-            sLog->outError(LOG_FILTER_GENERAL, "Class %u not found in DBC (Wrong DBC files?)", player->getClass());
+            TC_LOG_ERROR("server.worldserver", "Class %u not found in DBC (Wrong DBC files?)", player->getClass());
             return false;
         }
 
@@ -234,7 +237,7 @@ public:
         stmt->setUInt16(0, uint16(atLogin));
         CharacterDatabase.Execute(stmt);
 
-        TRINITY_READ_GUARD(HashMapHolder<Player>::LockType, *HashMapHolder<Player>::GetLock());
+        std::shared_lock<std::shared_mutex> lock(*HashMapHolder<Player>::GetLock());
         HashMapHolder<Player>::MapType const& plist = sObjectAccessor->GetPlayers();
         for (HashMapHolder<Player>::MapType::const_iterator itr = plist.begin(); itr != plist.end(); ++itr)
             itr->second->SetAtLoginFlag(atLogin);

@@ -68,7 +68,7 @@ void MapManager::checkAndCorrectGridStatesArray()
     {
         if (i_GridStates[i] != si_GridStates[i])
         {
-            sLog->outError(LOG_FILTER_MAPS, "MapManager::checkGridStates(), GridState: si_GridStates is currupt !!!");
+            TC_LOG_ERROR("maps", "MapManager::checkGridStates(), GridState: si_GridStates is currupt !!!");
             ok = false;
             si_GridStates[i] = i_GridStates[i];
         }
@@ -91,7 +91,7 @@ Map* MapManager::CreateBaseMap(uint32 id)
 
     if (map == NULL)
     {
-        TRINITY_GUARD(ACE_Thread_Mutex, Lock);
+        std::lock_guard<std::mutex> lock(_mapsLock);
 
         MapEntry const* entry = sMapStore.LookupEntry(id);
         ASSERT(entry);
@@ -164,7 +164,7 @@ bool MapManager::CanPlayerEnter(uint32 mapid, Player* player, bool loginCheck)
 
 #ifndef CROSS
     if (entry->MapID == player->GetGarrisonMapID() || entry->MapID == player->GetShipyardMapID())
-        targetDifficulty = Difficulty::DifficultyNormal;
+        targetDifficulty = Difficulty::DUNGEON_DIFFICULTY_NORMAL;
 #endif
 
     //The player has a heroic mode and tries to enter into instance which doesn't have a normal / heroic mode.
@@ -207,16 +207,16 @@ bool MapManager::CanPlayerEnter(uint32 mapid, Player* player, bool loginCheck)
             {
                 WorldPacket l_Data(SMSG_AREA_TRIGGER_NO_CORPSE);
                 player->GetSession()->SendPacket(&l_Data);
-                sLog->outDebug(LOG_FILTER_MAPS, "MAP: Player '%s' does not have a corpse in instance '%s' and cannot enter.", player->GetName(), mapName);
+                TC_LOG_DEBUG("maps", "MAP: Player '%s' does not have a corpse in instance '%s' and cannot enter.", player->GetName(), mapName);
                 return false;
             }
 
-            sLog->outDebug(LOG_FILTER_MAPS, "MAP: Player '%s' has corpse in instance '%s' and can enter.", player->GetName(), mapName);
+            TC_LOG_DEBUG("maps", "MAP: Player '%s' has corpse in instance '%s' and can enter.", player->GetName(), mapName);
             player->ResurrectPlayer(0.5f, false);
             player->SpawnCorpseBones();
         }
         else
-            sLog->outDebug(LOG_FILTER_MAPS, "Map::CanPlayerEnter - player '%s' is dead but does not have a corpse!", player->GetName());
+            TC_LOG_DEBUG("maps", "Map::CanPlayerEnter - player '%s' is dead but does not have a corpse!", player->GetName());
     }
 
     Group* group = player->GetGroup();
@@ -225,7 +225,7 @@ bool MapManager::CanPlayerEnter(uint32 mapid, Player* player, bool loginCheck)
 		// Can only enter in a raid group except for any raid pre-WoD.
         if ((!group || !group->isRaidGroup()) && !sWorld->getBoolConfig(CONFIG_INSTANCE_IGNORE_RAID))
         {
-            sLog->outDebug(LOG_FILTER_MAPS, "MAP: Player '%s' must be in a raid group to enter instance '%s'", player->GetName(), mapName);
+            TC_LOG_DEBUG("maps", "MAP: Player '%s' must be in a raid group to enter instance '%s'", player->GetName(), mapName);
             return false;
         }
     }
@@ -305,14 +305,14 @@ void MapManager::Update(uint32 diff)
     sObjectAccessor->Update(uint32(i_timer.GetCurrent()));
 
     std::queue<std::function<bool()>> l_Operations;
-    m_CriticalOperationLock.acquire();
+    m_CriticalOperationLock.lock();
 
     l_Operations = m_CriticalOperation;
     
     while (!m_CriticalOperation.empty())
         m_CriticalOperation.pop();
 
-    m_CriticalOperationLock.release();
+    m_CriticalOperationLock.unlock();
 
     std::queue<std::function<bool()>> l_CriticalOperationFallBack;
     while (!l_Operations.empty())
@@ -328,13 +328,13 @@ void MapManager::Update(uint32 diff)
 
     if (!l_CriticalOperationFallBack.empty())
     {
-        m_CriticalOperationLock.acquire();
+        m_CriticalOperationLock.lock();
         while (!l_CriticalOperationFallBack.empty())
         {
             m_CriticalOperation.push(l_CriticalOperationFallBack.front());
             l_CriticalOperationFallBack.pop();
         }
-        m_CriticalOperationLock.release();
+        m_CriticalOperationLock.unlock();
     }
 
     i_timer.SetCurrent(0);
@@ -346,7 +346,7 @@ void MapManager::DoDelayedMovesAndRemoves()
 
 bool MapManager::ExistMapAndVMap(uint32 mapid, float x, float y)
 {
-    GridCoord p = JadeCore::ComputeGridCoord(x, y);
+    GridCoord p = Trinity::ComputeGridCoord(x, y);
 
     int gx=63-p.x_coord;
     int gy=63-p.y_coord;
@@ -383,7 +383,7 @@ void MapManager::UnloadAll()
 
 uint32 MapManager::GetNumInstances()
 {
-    TRINITY_GUARD(ACE_Thread_Mutex, Lock);
+    std::lock_guard<std::mutex> lock(_mapsLock);
 
     uint32 ret = 0;
     for (MapMapType::iterator itr = i_maps.begin(); itr != i_maps.end(); ++itr)
@@ -400,7 +400,7 @@ uint32 MapManager::GetNumInstances()
 
 uint32 MapManager::GetNumPlayersInInstances()
 {
-    TRINITY_GUARD(ACE_Thread_Mutex, Lock);
+    std::lock_guard<std::mutex> lock(_mapsLock);
 
     uint32 ret = 0;
     for (MapMapType::iterator itr = i_maps.begin(); itr != i_maps.end(); ++itr)
@@ -443,7 +443,7 @@ uint32 MapManager::GenerateInstanceId()
 
     if (l_NewInstanceID == m_NextInstanceID)
     {
-        sLog->outError(LogFilterType::LOG_FILTER_MAPS, "Instance ID overflow!! Can't continue, shutting down server. ");
+        TC_LOG_ERROR("maps", "Instance ID overflow!! Can't continue, shutting down server. ");
         World::StopNow(ShutdownExitCode::ERROR_EXIT_CODE);
     }
 
@@ -459,4 +459,10 @@ void MapManager::FreeInstanceId(uint32 p_InstanceID)
         SetNextInstanceId(p_InstanceID);
 
     m_InstanceIDs.erase(p_InstanceID);
+}
+
+MapManager* MapManager::instance()
+{
+    static MapManager instance;
+    return &instance;
 }

@@ -32,6 +32,7 @@
 # include "BattlegroundTTP.h"
 
 # include "LFG.h"
+#include <LFG.h>
 
 namespace MS
 {
@@ -125,11 +126,11 @@ namespace MS
                         *p_Data << uint32(p_BG->GetMapId());                                      ///< Map ID
                         *p_Data << uint32(p_Time1);                                               ///< Time until closed
 
-                        if (l_Role & LFG_ROLEMASK_TANK)
+                        if (l_Role & lfg::LfgRoles::PLAYER_ROLE_TANK)
                             *p_Data << uint8(ROLE_TANK);
-                        else if (l_Role & LFG_ROLEMASK_HEALER)
+                        else if (l_Role & lfg::LfgRoles::PLAYER_ROLE_HEALER)
                             *p_Data << uint8(ROLE_HEALER);
-                        else if (l_Role & LFG_ROLEMASK_DAMAGE)
+                        else if (l_Role & lfg::LfgRoles::PLAYER_ROLE_DAMAGE)
                             *p_Data << uint8(ROLE_DAMAGE);
                         else
                             *p_Data << uint8(ROLE_DAMAGE);
@@ -215,7 +216,7 @@ namespace MS
 
                     if (!p_BG->IsPlayerInBattleground(l_ScoreBeginIT->first))
                     {
-                        sLog->outError(LOG_FILTER_BATTLEGROUND, "Player " UI64FMTD " has scoreboard entry for battleground %u but is not in battleground!", l_It->first, p_BG->GetTypeID(true));
+                        TC_LOG_ERROR("bg.battleground", "Player " UI64FMTD " has scoreboard entry for battleground %u but is not in battleground!", l_It->first, p_BG->GetTypeID(true));
                         continue;
                     }
 
@@ -284,7 +285,7 @@ namespace MS
 
                     if (!p_BG->IsPlayerInBattleground(l_ScoreBeginIT->first))
                     {
-                        sLog->outError(LOG_FILTER_BATTLEGROUND, "Player " UI64FMTD " has scoreboard entry for battleground %u but is not in battleground!", l_It->first, p_BG->GetTypeID(true));
+                        TC_LOG_ERROR("bg.battleground", "Player " UI64FMTD " has scoreboard entry for battleground %u but is not in battleground!", l_It->first, p_BG->GetTypeID(true));
                         continue;
                     }
 

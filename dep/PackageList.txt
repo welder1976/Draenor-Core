@@ -2,7 +2,7 @@ TrinityCore uses (parts of or in whole) the following opensource software :
 
 ACE (ADAPTIVE Communication Environment)
   http://www.cs.wustl.edu/~schmidt/ACE.html
-  Version: 5.8.3
+  Version: 6.1.4
 
 bzip2 (a freely available, patent free, high-quality data compressor)
   http://www.bzip.org/
@@ -14,7 +14,7 @@ G3D (a commercial-grade C++ 3D engine available as Open Source (BSD License)
 
 jemalloc (a general-purpose scalable concurrent malloc-implementation)
   http://www.canonware.com/jemalloc/
-  Version: 2.2.5
+  Version: 3.6.0
 
 SFMT (SIMD-oriented Fast Mersenne Twister)
   Based on http://agner.org/random/
@@ -26,12 +26,20 @@ utf8-cpp (UTF-8 with C++ in a Portable Way)
 
 zlib (A Massively Spiffy Yet Delicately Unobtrusive Compression Library)
   http://www.zlib.net/
-  Version: 1.2.8
+  Version: 1.2.11
 
 gSOAP (a portable development toolkit for C and C++ XML Web services and XML data bindings)
   http://gsoap2.sourceforge.net/
-  Version: 2.8.2
+  Version: 2.8.10
+
+recastnavigation (Recast is state of the art navigation mesh construction toolset for games)
+  https://github.com/memononen/recastnavigation
+  Version: 740a7ba51600a3c87ce5667ae276a38284a1ce75
 
 CURL (command line tool and library for transferring data with URL syntax)
 https://curl.haxx.se/
 Version: 7.47.1
+
+protobuf (Protocol Buffers - Google's data interchange format https://developers.google.com/protocol-buffers/)
+  https://github.com/google/protobuf
+  Version: v2.6.1

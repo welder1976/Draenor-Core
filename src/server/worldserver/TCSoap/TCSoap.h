@@ -17,32 +17,17 @@
 #include "soapH.h"
 #include "soapStub.h"
 #include "stdsoap2.h"
+#include <mutex>
+#include <future>
 
-#include <ace/Semaphore.h>
-#include <ace/Task.h>
-
-class TCSoapRunnable: public ACE_Based::Runnable
-{
-    public:
-        TCSoapRunnable() { }
-        void run();
-        void setListenArguments(std::string host, uint16 port)
-        {
-            m_host = host;
-            m_port = port;
-        }
-    private:
-        void process_message(ACE_Message_Block* mb);
-
-        std::string m_host;
-        uint16 m_port;
-};
+void process_message(struct soap* soap_message);
+void TCSoapThread(const std::string& host, uint16 port);
 
 class SOAPCommand
 {
     public:
         SOAPCommand():
-            pendingCommands(0, USYNC_THREAD, "pendingCommands"), m_success(false)
+            m_success(false)
         {
         }
 
@@ -55,11 +40,10 @@ class SOAPCommand
             m_printBuffer += msg;
         }
 
-        ACE_Semaphore pendingCommands;
-
         void setCommandSuccess(bool val)
         {
             m_success = val;
+            finishedPromise.set_value();
         }
 
         bool hasCommandSucceeded() const
@@ -76,6 +60,7 @@ class SOAPCommand
 
         bool m_success;
         std::string m_printBuffer;
+        std::promise<void> finishedPromise;
 };
 
 #endif

@@ -1,8 +1,8 @@
 # output generic information about the core and buildtype chosen
 message("")
-message("* WoDCore revision   : ${rev_hash} ${rev_date} (${rev_branch} branch)")
+message("* DraenorCore revision   : ${rev_hash} ${rev_date} (${rev_branch} branch)")
 if( UNIX )
-  message("* WoDCore buildtype  : ${CMAKE_BUILD_TYPE}")
+  message("* DraenorCore buildtype  : ${CMAKE_BUILD_TYPE}")
 endif()
 message("")
 
@@ -25,9 +25,9 @@ else()
 endif()
 
 if( SERVERS )
-  message("* Build world/auth       : Yes (default)")
+  message("* Build world/bnet       : Yes (default)")
 else()
-  message("* Build world/authserver : No")
+  message("* Build world/bnetserver : No")
 endif()
 
 if( SCRIPTS )
@@ -74,6 +74,12 @@ if( WITH_COREDEBUG )
   add_definitions(-DTRINITY_DEBUG)
 else()
   message("* Use coreside debug     : No  (default)")
+endif()
+
+if( NOT WITH_SOURCE_TREE STREQUAL "no" )
+  message("* Show source tree       : Yes - \"${WITH_SOURCE_TREE}\"")
+else()
+  message("* Show source tree       : No")
 endif()
 
 if( WIN32 )

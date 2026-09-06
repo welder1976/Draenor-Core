@@ -265,9 +265,7 @@ public:
        Higham, "Computing the Polar Decomposition -- with Applications Siam
        Journal of Science and Statistical Computing, Vol 7, No. 4, October
        1986.
-
        Decomposes A into R*S, where R is orthogonal and S is symmetric.
-
        Ken Shoemake's "Matrix animation and polar decomposition"
        in Proceedings of the conference on Graphics interface '92
        seems to be better known in the world of graphics, but Higham's version
@@ -349,7 +347,7 @@ public:
     // "You might be tempted to write [...] them as inline functions 
     // inside their respective header files, but this is something you 
     // must definitely not do. An inline function can be duplicated 
-    // in every file in which it appears œóõ½ and this duplication 
+    // in every file in which it appears œoo½ and this duplication 
     // includes the static object definition. Because inline functions 
     // automatically default to internal linkage, this would result in 
     // having multiple static objects across the various translation 
@@ -400,4 +398,3 @@ inline Vector3 operator* (const Vector3& rkPoint, const Matrix3& rkMatrix) {
 } // namespace
 
 #endif
-

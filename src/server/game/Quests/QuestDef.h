@@ -6,8 +6,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef QUEST_H
-#define QUEST_H
+#ifndef TRINITYCORE_QUEST_H
+#define TRINITYCORE_QUEST_H
 
 #include "DB2Structure.h"
 #include "Define.h"
@@ -22,11 +22,16 @@ class ObjectMgr;
 
 #define MAX_QUEST_LOG_SIZE 50           ///< Last update 6.0.3 19116, idk if blizzard has unlock to 50 quest on live servers, but somes quest packet client-side & updatefield are update to 50
 
+#define QUEST_OBJECTIVES_COUNT 4
+#define QUEST_ITEM_OBJECTIVES_COUNT 6
 #define QUEST_SOURCE_ITEM_IDS_COUNT 4
 #define QUEST_REWARD_CHOICES_COUNT 6
 #define QUEST_REWARDS_COUNT 4
+#define QUEST_REWARD_ITEM_COUNT QUEST_REWARDS_COUNT
+#define QUEST_ITEM_DROP_COUNT 4
 #define QUEST_DEPLINK_COUNT 10
 #define QUEST_REPUTATIONS_COUNT 5
+#define QUEST_REWARD_REPUTATIONS_COUNT QUEST_REPUTATIONS_COUNT
 #define QUEST_EMOTE_COUNT 4
 #define QUEST_PVP_KILL_SLOT 0
 #define QUEST_REWARD_CURRENCY_COUNT 4
@@ -204,7 +209,7 @@ enum QuestObjectiveType
     QUEST_OBJECTIVE_TYPE_MONEY                  = 8,
     QUEST_OBJECTIVE_TYPE_PLAYER                 = 9,
     QUEST_OBJECTIVE_TYPE_AREATRIGGER            = 10,
-    QUEST_OBJECTIVE_TYPE_PET_BATTLE_TAMER       = 11,
+    QUEST_OBJECTIVE_TYPE_PET_TRAINER_DEFEAT     = 11,
     QUEST_OBJECTIVE_TYPE_PET_BATTLE_ELITE       = 12,
     QUEST_OBJECTIVE_TYPE_PET_BATTLE_PVP         = 13,
     QUEST_OBJECTIVE_TYPE_CRITERIA_TREE          = 14,
@@ -504,11 +509,15 @@ struct QuestStatusData
 {
     QuestStatusData(): Status(QUEST_STATUS_NONE), Timer(0), Explored(false)
     {
-
+        memset(ItemCount, 0, QUEST_ITEM_OBJECTIVES_COUNT * sizeof(uint16));
+        memset(CreatureOrGOCount, 0, QUEST_OBJECTIVES_COUNT * sizeof(uint16));
     }
 
     QuestStatus Status;
     uint32 Timer;
+    uint16 ItemCount[QUEST_ITEM_OBJECTIVES_COUNT];
+    uint16 CreatureOrGOCount[QUEST_OBJECTIVES_COUNT];
+    uint16 PlayerCount;
     bool Explored;
 };
 #endif

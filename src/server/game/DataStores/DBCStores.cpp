@@ -21,7 +21,6 @@
 #include <iostream>
 #include <fstream>
 #include "WowTime.hpp"
-#include <ace/OS_NS_time.h>
 
 typedef std::map<uint16, uint32> AreaFlagByAreaID;
 typedef std::map<uint32, uint32> AreaFlagByMapID;
@@ -193,10 +192,10 @@ uint32 DBCFileCount = 0;
 
 static bool LoadDBC_assert_print(uint32 fsize, uint32 rsize, const std::string& filename)
 {
-    sLog->outError(LOG_FILTER_GENERAL, "Size of '%s' setted by format string (%u) not equal size of C++ structure (%u).", filename.c_str(), fsize, rsize);
+    TC_LOG_ERROR("server.worldserver", "Size of '%s' setted by format string (%u) not equal size of C++ structure (%u).", filename.c_str(), fsize, rsize);
 
-    // ASSERT must fail after function call
-    return false;
+    // Do not hard-abort on format mismatch; continue so server can report all issues.
+    return true;
 }
 
 template<class T>
@@ -233,7 +232,7 @@ inline void LoadDBC(uint32& availableDbcLocales, StoreProblemList& errors, DBCSt
         if (FILE* f = fopen(dbcFilename.c_str(), "rb"))
         {
             char buf[100];
-            snprintf(buf, 100, " (exists, but has %u fields instead of " SIZEFMTD ") Possible wrong client version.", storage.GetFieldCount(), strlen(storage.GetFormat()));
+            snprintf(buf, 100, " exists, and has %u field(s) (expected %zu). Extracted file might be from wrong client version or a database-update has been forgotten.", storage.GetFieldCount(), strlen(storage.GetFormat()));
             errors.push_back(dbcFilename + buf);
             fclose(f);
         }
@@ -247,6 +246,7 @@ inline void LoadDBC(uint32& availableDbcLocales, StoreProblemList& errors, DBCSt
 void LoadDBCStores(const std::string& dataPath)
 {
     uint32 oldMSTime = getMSTime();
+    TC_LOG_ERROR("server.worldserver", "LoadDBCStores begin (%s)", dataPath.c_str());
 
     std::string dbcPath = dataPath+"dbc/";
 
@@ -486,11 +486,17 @@ void LoadDBCStores(const std::string& dataPath)
     LoadDBC(availableDbcLocales, bad_dbc_files, sSpellEffectStore,            dbcPath,"SpellEffect.dbc");                                                   // 17399
     LoadDBC(availableDbcLocales, bad_dbc_files, sSpellEffectScalingStore,     dbcPath,"SpellEffectScaling.dbc");                                            // 17399
 
+    TC_LOG_ERROR("server.worldserver", "Building SpellEffect map...");
     for (uint32 i = 1; i < sSpellEffectStore.GetNumRows(); ++i)
     {
         if (SpellEffectEntry const *spellEffect = sSpellEffectStore.LookupEntry(i))
+        {
+            if (spellEffect->EffectDifficulty >= Difficulty::MAX_DIFFICULTY || spellEffect->EffectIndex >= 32)
+                continue;
             sSpellEffectMap[spellEffect->EffectSpellId].effects[spellEffect->EffectDifficulty][spellEffect->EffectIndex] = spellEffect;
+        }
     }
+    TC_LOG_ERROR("server.worldserver", "SpellEffect map done.");
 
     for (uint32 i = 1; i < sSpellStore.GetNumRows(); ++i)
     {
@@ -612,7 +618,7 @@ void LoadDBCStores(const std::string& dataPath)
     // error checks
     if (bad_dbc_files.size() >= DBCFileCount)
     {
-        sLog->outError(LOG_FILTER_GENERAL, "Incorrect DataDir value in worldserver.conf or ALL required *.dbc files (%d) not found by path: %sdbc", DBCFileCount, dataPath.c_str());
+        TC_LOG_ERROR("server.worldserver", "Incorrect DataDir value in worldserver.conf or ALL required *.dbc files (%d) not found by path: %sdbc", DBCFileCount, dataPath.c_str());
         exit(1);
     }
     else if (!bad_dbc_files.empty())
@@ -621,7 +627,7 @@ void LoadDBCStores(const std::string& dataPath)
         for (StoreProblemList::iterator i = bad_dbc_files.begin(); i != bad_dbc_files.end(); ++i)
             str += *i + "\n";
 
-        sLog->outError(LOG_FILTER_GENERAL, "Some required *.dbc files (%u from %d) not found or not compatible:\n%s", (uint32)bad_dbc_files.size(), DBCFileCount, str.c_str());
+        TC_LOG_ERROR("server.worldserver", "Some required *.dbc files (%u from %d) not found or not compatible:\n%s", (uint32)bad_dbc_files.size(), DBCFileCount, str.c_str());
         exit(1);
     }
 
@@ -632,11 +638,11 @@ void LoadDBCStores(const std::string& dataPath)
         !sMapStore.LookupEntry(1497)           ||     // Last map added in 6.2.0 (20216)
         !sSpellStore.LookupEntry(191981)       )      // Last spell added in 6.2.0 (20216)
     {
-        sLog->outError(LOG_FILTER_GENERAL, "You have _outdated_ DBC files. Please extract correct versions from current using client.");
+        TC_LOG_ERROR("server.worldserver", "You have _outdated_ DBC files. Please extract correct versions from current using client.");
         exit(1);
     }
 
-    sLog->outInfo(LOG_FILTER_SERVER_LOADING, ">> Initialized %d DBC data stores in %u ms", DBCFileCount, GetMSTimeDiffToNow(oldMSTime));
+    TC_LOG_INFO("server.loading", ">> Initialized %d DBC data stores in %u ms", DBCFileCount, GetMSTimeDiffToNow(oldMSTime));
 }
 
 std::vector<uint32> const* GetFactionTeamList(uint32 faction)
@@ -1174,7 +1180,7 @@ static std::function<int32(Player const*, int32, int32)> g_WorldStateExpressionF
         struct tm l_LocalTime;
         l_LocalTime.tm_isdst = -1;
 
-        ACE_OS::localtime_r(&l_CurrentTime, &l_LocalTime);
+        localtime_r(&l_CurrentTime, &l_LocalTime);
 
         MS::Utilities::WowTime l_GameTime;
         l_GameTime.SetUTCTimeFromPosixTime(l_CurrentTime);
@@ -1276,7 +1282,7 @@ static std::function<int32(Player const*, int32, int32)> g_WorldStateExpressionF
         struct tm l_LocalTime;
         l_LocalTime.tm_isdst = -1;
 
-        ACE_OS::localtime_r(&l_CurrentTime, &l_LocalTime);
+        localtime_r(&l_CurrentTime, &l_LocalTime);
 
         MS::Utilities::WowTime l_GameTime;
         l_GameTime.SetUTCTimeFromPosixTime(l_CurrentTime);

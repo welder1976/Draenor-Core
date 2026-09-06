@@ -15,18 +15,17 @@
 
 #include "Common.h"
 #include "Timer.h"
-#include <ace/Atomic_Op.h>
 #include "SharedDefines.h"
 #include "QueryResult.h"
 #include "Callback.h"
 #include "TimeDiffMgr.h"
 #include "DatabaseWorkerPool.h"
 
-#ifndef CROSS
-# include "InterRealmSession.h"
-#endif
-
 #include <atomic>
+#include <mutex>
+#include <future>
+#include <vector>
+#include <memory>
 
 class Object;
 class WorldPacket;
@@ -35,6 +34,11 @@ class Player;
 class WorldSocket;
 class SystemMgr;
 class LexicsCutter;
+class InterRealmSession;
+
+#ifndef CROSS
+# include "InterRealmSession.h"
+#endif
 
 // ServerMessages.dbc
 enum ServerMessageType
@@ -108,6 +112,7 @@ enum WorldBoolConfigs
     CONFIG_ALLOW_TWO_SIDE_INTERACTION_GUILD,
     CONFIG_ALLOW_TWO_SIDE_INTERACTION_AUCTION,
     CONFIG_ALLOW_TWO_SIDE_INTERACTION_MAIL,
+    CONFIG_ALLOW_TWO_SIDE_INTERACTION_LFG,
     CONFIG_ALLOW_TWO_SIDE_INTERACTION_MOUNT,
     CONFIG_ALLOW_TWO_SIDE_INTERACTION_MOUNT_CAPITALS,
     CONFIG_ALLOW_TWO_SIDE_WHO_LIST,
@@ -167,6 +172,10 @@ enum WorldBoolConfigs
     CONFIG_CHATLOG_BGROUND,
     CONFIG_DUNGEON_FINDER_ENABLE,
     CONFIG_AUTOBROADCAST,
+    CONFIG_LFG_CASTDESERTER,
+    CONFIG_LFG_OVERRIDE_ROLES_REQUIRED,
+    CONFIG_LFG_MULTIQUEUE_ENABLED,
+    CONFIG_LFG_KEEP_QUEUES_IN_DUNGEON,
     CONFIG_ALLOW_TICKETS,
     CONFIG_DBC_ENFORCE_ITEM_ATTRIBUTES,
     CONFIG_PRESERVE_CUSTOM_CHANNELS,
@@ -258,6 +267,7 @@ enum WorldIntConfigs
     CONFIG_INTERVAL_CHANGEWEATHER,
     CONFIG_INTERVAL_DISCONNECT_TOLERANCE,
     CONFIG_PORT_WORLD,
+    CONFIG_PORT_INSTANCE,
     CONFIG_SOCKET_TIMEOUTTIME,
     CONFIG_SESSION_ADD_DELAY,
     CONFIG_GAME_TYPE,
@@ -385,6 +395,13 @@ enum WorldIntConfigs
     CONFIG_DB_PING_INTERVAL,
     CONFIG_PRESERVE_CUSTOM_CHANNEL_DURATION,
     CONFIG_PERSISTENT_CHARACTER_CLEAN_FLAGS,
+    CONFIG_LFG_OPTIONSMASK,
+    CONFIG_LFG_TANKS_NEEDED,
+    CONFIG_LFG_HEALERS_NEEDED,
+    CONFIG_LFG_DPS_NEEDED,
+    CONFIG_LFG_SHORTAGE_CHECK_INTERVAL,
+    CONFIG_LFG_SHORTAGE_PERCENT,
+    CONFIG_LFG_MAX_LFR_QUEUES,
     CONFIG_MAX_INSTANCES_PER_HOUR,
     CONFIG_WARDEN_CLIENT_RESPONSE_DELAY,
     CONFIG_WARDEN_CLIENT_CHECK_HOLDOFF,
@@ -427,6 +444,7 @@ enum WorldIntConfigs
     CONFIG_ACCOUNT_BIND_SHOP_GROUP_MASK,
     CONFIG_ACCOUNT_BIND_ALLOWED_GROUP_MASK,
     CONFIG_ONLY_MAP,
+    CONFIG_CREATURE_PICKPOCKET_REFILL,
     INT_CONFIG_VALUE_COUNT
 };
 
@@ -522,6 +540,11 @@ enum BillingPlanFlags
 };
 
 /// Type of server, this is values from second column of Cfg_Configs.dbc
+#ifndef TRINITY_REALM_TYPE_DEFINED
+#define TRINITY_REALM_TYPE_DEFINED
+#ifndef MAX_CLIENT_REALM_TYPE
+#define MAX_CLIENT_REALM_TYPE 14
+#endif
 enum RealmType
 {
     REALM_TYPE_NORMAL = 0,
@@ -532,6 +555,7 @@ enum RealmType
     REALM_TYPE_FFA_PVP = 16                                 // custom, free for all pvp mode like arena PvP in all zones except rest activated places and sanctuaries
                                                             // replaced by REALM_PVP in realm list
 };
+#endif
 
 enum RealmZone
 {
@@ -621,6 +645,7 @@ enum ScriptCommands
     SCRIPT_COMMAND_PLAYMOVIE             = 34                // source = Player, datalong = movie id
 };
 
+
 /// Storage class for commands issued for delayed execution
 struct CliCommandHolder
 {
@@ -654,6 +679,7 @@ struct CharacterInfo
     uint8 Race;
     uint8 Sex;
     uint8 Level;
+    bool IsDeleted = false;
 };
 
 enum RecordDiffType
@@ -672,7 +698,7 @@ struct QueryHolderCallback
 {
     QueryHolderCallback(QueryResultHolderFuture p_QueryResultHolderFuture, std::function<void(SQLQueryHolder*)> p_Callback)
     {
-        m_QueryResultHolderFuture = p_QueryResultHolderFuture;
+        m_QueryResultHolderFuture = std::move(p_QueryResultHolderFuture);
         m_Callback = p_Callback;
     }
 
@@ -696,7 +722,7 @@ struct MotdText
 class World
 {
     public:
-        static std::atomic<unsigned int> m_worldLoopCounter;
+        static std::atomic_uint32_t m_worldLoopCounter;
 
         World();
         ~World();
@@ -716,6 +742,7 @@ class World
 #ifndef CROSS
         WorldSession* FindSession(uint32 id) const;
         void AddSession(WorldSession* s);
+        void AddInstanceSocket(std::shared_ptr<WorldSocket> sock, uint64 connectToKey);
         bool RemoveSession(uint32 id);
 
         /// Increase/Decrease number of players
@@ -753,6 +780,9 @@ class World
 
         void SetInterRealmSession(InterRealmSession* irt) { m_InterRealmSession = irt; }
         InterRealmSession* GetInterRealmSession() { return m_InterRealmSession; }
+
+        std::thread::id GetThreadId() const { return m_threadId; }
+        void SendRaidQueueInfo(Player* player = nullptr);
 
         void ResetEventSeasonalQuests(uint16 event_id);
         void ResetCurrencyWeekCap();
@@ -849,7 +879,7 @@ class World
         /// Get the maximum skill level a player can reach
         uint16 GetConfigMaxSkillValue() const
         {
-            uint8 lvl = uint8(getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
+            uint16 lvl = uint16(getIntConfig(CONFIG_MAX_PLAYER_LEVEL));
 
             if (lvl >= 1 && lvl < 10)
                 return 75;
@@ -995,7 +1025,7 @@ class World
 
         uint32 GetCleaningFlags() const { return m_CleaningFlags; }
         void   SetCleaningFlags(uint32 flags) { m_CleaningFlags = flags; }
-        std::string GetRealmName() { return m_realmName; }
+        std::string GetRealmName() const { return m_realmName; }
 
         void UpdatePhaseDefinitions();
 
@@ -1015,23 +1045,29 @@ class World
             m_TransactionCallbackLock.unlock();
         }
 
-        void AddPrepareStatementCallback(std::pair<std::function<void(PreparedQueryResult)>, PreparedQueryResultFuture> p_Callback)
+        void AddPrepareStatementCallback(std::pair<std::function<void(PreparedQueryResult)>, PreparedQueryResultFuture>&& p_Callback)
         {
             m_PreparedStatementCallbackLock.lock();
-            m_PreparedStatementCallbacksBuffer->push_front(p_Callback);
+            m_PreparedStatementCallbacksBuffer->push_front(std::move(p_Callback));
             m_PreparedStatementCallbackLock.unlock();
         }
 
-        void AddQueryHolderCallback(QueryHolderCallback p_QueryHolderCallback)
+        void AddQueryHolderCallback(QueryHolderCallback&& p_QueryHolderCallback)
         {
             m_QueryHolderCallbackLock.lock();
-            m_QueryHolderCallbacksBuffer->push_front(p_QueryHolderCallback);
+            m_QueryHolderCallbacksBuffer->push_front(std::move(p_QueryHolderCallback));
             m_QueryHolderCallbackLock.unlock();
         }
 
         void AddNewSession(uint32 p_AccountID)
         {
             m_NewSessions.insert(p_AccountID);
+        }
+
+        /// Debug: opcodes blocked from being sent to clients (Debug.BlockSendOpcodes)
+        bool IsSendBlocked(uint32 p_Opcode) const
+        {
+            return m_BlockedSendOpcodes.find(p_Opcode) != m_BlockedSendOpcodes.end();
         }
 
     protected:
@@ -1109,12 +1145,13 @@ class World
 
         // sessions that are added async
         void AddSession_(WorldSession* s);
-        ACE_Based::LockedQueue<WorldSession*, ACE_Thread_Mutex> addSessQueue;
+        LockedQueue<WorldSession*> addSessQueue;
+        LockedQueue<std::pair<std::shared_ptr<WorldSocket>, uint64>> _linkSocketQueue;
 #endif
 
 #ifdef CROSS
         PlayerMap m_players;
-        ACE_Thread_Mutex playersLock;
+        std::mutex playersLock;
         uint32 m_update_online_timer;
         std::map<std::string, bool> nameMap;
 #endif
@@ -1125,10 +1162,11 @@ class World
         uint32 m_MaxPlayerCount;
 
         std::unordered_set<uint32> m_NewSessions;
+        std::unordered_set<uint32> m_BlockedSendOpcodes;
         uint32 m_LastAccountLogId;
         PreparedQueryResultFuture m_AccountLogIpScanCallback;
 
-        ACE_Based::LockedQueue<CliCommandHolder*, ACE_Thread_Mutex> cliCmdQueue;
+        LockedQueue<CliCommandHolder*> cliCmdQueue;
 
         std::string m_newCharString;
         std::string m_realmName;
@@ -1148,6 +1186,7 @@ class World
         bool m_allowMovement;
         std::string m_dataPath;
         MotdText m_Motd;
+        std::thread::id m_threadId;
 
         // for max speed access
         static float m_MaxVisibleDistanceOnContinents;
@@ -1176,7 +1215,7 @@ class World
 
 
         void ProcessQueryCallbacks();
-        ACE_Future_Set<PreparedQueryResult> m_realmCharCallbacks;
+        std::deque<std::future<PreparedQueryResult>> m_realmCharCallbacks;
         PreparedQueryResultFuture m_transfersDumpCallbacks;
         PreparedQueryResultFuture m_transfersLoadCallbacks;
         PreparedQueryResultFuture m_transfersExpLoadCallback;
@@ -1207,11 +1246,14 @@ class World
         std::unique_ptr<PreparedStatementCallbacks> m_PreparedStatementCallbacks;
         std::unique_ptr<PreparedStatementCallbacks> m_PreparedStatementCallbacksBuffer;
         std::mutex m_PreparedStatementCallbackLock;
+    public:
+        // Singleton instance
+        static World* instance();
 };
 
 extern uint32 g_RealmID;
 
-#define sWorld ACE_Singleton<World, ACE_Null_Mutex>::instance()
+#define sWorld World::instance()
 
 template <typename T>
 PreparedQueryResultFuture AsyncQuery(T& on, PreparedStatement* stmt, std::function<void(PreparedQueryResult)> p_Callback)
@@ -1223,7 +1265,8 @@ PreparedQueryResultFuture AsyncQuery(T& on, PreparedStatement* stmt, std::functi
     if (index != 0)
     {
         # ifdef GAME_SERVER_PROJECTS
-            sWorld->AddPrepareStatementCallback(std::make_pair(p_Callback, res));
+            sWorld->AddPrepareStatementCallback({ std::move(p_Callback), std::move(res) });
+            return PreparedQueryResultFuture();
         # endif
     }
 

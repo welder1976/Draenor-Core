@@ -393,7 +393,7 @@ public:
             {
                 _summonDeaths = value;
 
-                if (GetDifficulty() == Difficulty::Difficulty10N)
+                if (GetDifficulty() == Difficulty::RAID_DIFFICULTY_10MAN_NORMAL)
                 {
                     if (_summonDeaths == MAX_SUMMONS_PHASE_TWO_10MAN)
                     {
@@ -401,7 +401,7 @@ public:
                         DoAction(ACTION_HANDLE_P_THREE_INTRO);
                     }
                 }
-                else if (GetDifficulty() == Difficulty::Difficulty25N)
+                else if (GetDifficulty() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL)
                 {
                     if (_summonDeaths == MAX_SUMMONS_PHASE_TWO_25MAN)
                     {
@@ -850,7 +850,7 @@ public:
 
                         if (_arcaneReinforcements && instance)
                         {
-                            for (uint8 rangeDisks = 0; rangeDisks < (GetDifficulty() == Difficulty::Difficulty10N ? 4 : 5); rangeDisks++)
+                            for (uint8 rangeDisks = 0; rangeDisks < (GetDifficulty() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL ? 4 : 5); rangeDisks++)
                             {
                                 Creature* casterDiskSummon = me->SummonCreature(NPC_HOVER_DISK_CASTER, RangeHoverDisksSpawnPositions[rangeDisks]);
 
@@ -866,7 +866,7 @@ public:
 
                             _arcaneReinforcements = false;
 
-                            if (GetDifficulty() == Difficulty::Difficulty25N)
+                            if (GetDifficulty() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL)
                                 events.ScheduleEvent(EVENT_DELAYED_REINFORCEMENTS, 1*IN_MILLISECONDS, 0, PHASE_TWO);
                         }
                         break;
@@ -946,7 +946,7 @@ public:
                         SetPhase(PHASE_THREE, true);
                         break;
                     case EVENT_SURGE_OF_POWER_P_THREE:
-                        if (GetDifficulty() == Difficulty::Difficulty10N)
+                        if (GetDifficulty() == Difficulty::RAID_DIFFICULTY_10MAN_NORMAL)
                         {
                             if (Unit* tempSurgeTarget = SelectTarget(SELECT_TARGET_RANDOM, 0, 0.0f, false, SPELL_RIDE_RED_DRAGON_BUDDY))
                             {
@@ -963,7 +963,7 @@ public:
                                 }
                             }
                         }
-                        else if (GetDifficulty() == Difficulty::Difficulty25N)
+                        else if (GetDifficulty() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL)
                         {
                             memset(_surgeTargetGUID, 0, sizeof(_surgeTargetGUID));
                             DoCastAOE(SPELL_SURGE_OF_POWER_WARNING_SELECTOR_25, true);
@@ -995,10 +995,10 @@ public:
             Talk(SAY_DEATH);
             if (Creature* alexstraszaGiftBoxBunny = me->GetMap()->GetCreature(instance->GetData64(DATA_GIFT_BOX_BUNNY_GUID)))
             {
-                if (GetDifficulty() == Difficulty::Difficulty10N)
+                if (GetDifficulty() == Difficulty::RAID_DIFFICULTY_10MAN_NORMAL)
                     alexstraszaGiftBoxBunny->SummonGameObject(GO_HEART_OF_MAGIC_10, HeartOfMagicSpawnPos.GetPositionX(), HeartOfMagicSpawnPos.GetPositionY(),
                         HeartOfMagicSpawnPos.GetPositionZ(), HeartOfMagicSpawnPos.GetOrientation(), 0.0f, 0.0f, 0.0f, 1.0f, 0);
-                else if (GetDifficulty() == Difficulty::Difficulty25N)
+                else if (GetDifficulty() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL)
                     alexstraszaGiftBoxBunny->SummonGameObject(GO_HEART_OF_MAGIC_25, HeartOfMagicSpawnPos.GetPositionX(), HeartOfMagicSpawnPos.GetPositionY(),
                         HeartOfMagicSpawnPos.GetPositionZ(), HeartOfMagicSpawnPos.GetOrientation(), 0.0f, 0.0f, 0.0f, 1.0f, 0);
             }
@@ -1791,10 +1791,10 @@ class spell_malygos_arcane_storm: public SpellScriptLoader
                 {
                     // Resize list only to objects that are vehicles.
                     IsCreatureVehicleCheck check(true);
-                    JadeCore::RandomResizeList(targets, check, (malygos->GetMap()->GetDifficultyID() == Difficulty::Difficulty10N ? 4 : 10));
+                    Trinity::RandomResizeList(targets, check, (malygos->GetMap()->GetDifficultyID() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL ? 4 : 10));
                 }
                 else
-                    JadeCore::RandomResizeList(targets, (malygos->GetMap()->GetDifficultyID() == Difficulty::Difficulty10N ? 4 : 10));
+                    Trinity::RandomResizeList(targets, (malygos->GetMap()->GetDifficultyID() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL ? 4 : 10));
             }
 
             void HandleVisual(SpellEffIndex /*effIndex*/)
@@ -2047,7 +2047,7 @@ class spell_scion_of_eternity_arcane_barrage: public SpellScriptLoader
                 // and if 3rd picks X again 4th will pick smth else (by not limiting the cast to certain caster).
                 if (targets.size() > 1)
                     if (malygos && malygos->AI()->GetGUID(DATA_LAST_TARGET_BARRAGE_GUID))
-                        targets.remove_if(JadeCore::ObjectGUIDCheck(malygos->AI()->GetGUID(DATA_LAST_TARGET_BARRAGE_GUID)));
+                        targets.remove_if(Trinity::ObjectGUIDCheck(malygos->AI()->GetGUID(DATA_LAST_TARGET_BARRAGE_GUID)));
 
                 // Remove players not on Hover Disk from second list
                 std::list<WorldObject*> playersWithoutDisk;
@@ -2063,7 +2063,7 @@ class spell_scion_of_eternity_arcane_barrage: public SpellScriptLoader
                 // Finally here we remove all targets that have been damaged by Arcane Barrage
                 // and have 2 seconds long aura still lasting. Used to give healers some time.
                 if (!targets.empty())
-                    targets.remove_if(JadeCore::UnitAuraCheck(true, SPELL_ARCANE_BARRAGE_DAMAGE));
+                    targets.remove_if(Trinity::UnitAuraCheck(true, SPELL_ARCANE_BARRAGE_DAMAGE));
 
                 // Now we resize the list to max output targets which can be only 1
                 // to take it's guid and send/store it to DATA_LAST_TARGET_BARRAGE_GUID.
@@ -2072,7 +2072,7 @@ class spell_scion_of_eternity_arcane_barrage: public SpellScriptLoader
                 if (!targets.empty())
                 {
                     if (targets.size() > 1)
-                        JadeCore::RandomResizeList(targets, 1);
+                        Trinity::RandomResizeList(targets, 1);
 
                     if (WorldObject* filteredTarget = targets.front())
                         if (malygos)
@@ -2328,7 +2328,7 @@ class spell_malygos_surge_of_power_warning_selector_25: public SpellScriptLoader
                 std::list<WorldObject*> selectedTargets = targets;
 
                 uint8 guidDataSlot = DATA_FIRST_SURGE_TARGET_GUID; // SetGuid in Malygos AI is reserved for 14th, 15th and 16th Id for the three targets
-                JadeCore::RandomResizeList(selectedTargets, 3);
+                Trinity::RandomResizeList(selectedTargets, 3);
                 for (std::list<WorldObject*>::const_iterator itr = selectedTargets.begin(); itr != selectedTargets.end(); ++itr)
                 {
                     Creature* target = (*itr)->ToCreature();
@@ -2475,12 +2475,12 @@ class spell_alexstrasza_gift_beam_visual: public SpellScriptLoader
             {
                 if (Creature* target = GetTarget()->ToCreature())
                 {
-                    if (target->GetMap()->GetDifficultyID() == Difficulty::Difficulty10N)
+                    if (target->GetMap()->GetDifficultyID() == Difficulty::RAID_DIFFICULTY_10MAN_NORMAL)
                     {
                         if (GameObject* alexstraszaGift = target->SummonGameObject(GO_ALEXSTRASZA_S_GIFT_10, target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(), target->GetOrientation(), 0.0f, 0.0f, 0.0f, 0.0f, 0))
                             _alexstraszaGiftGuid = alexstraszaGift->GetGUID();
                     }
-                    else if (target->GetMap()->GetDifficultyID() == Difficulty::Difficulty25N)
+                    else if (target->GetMap()->GetDifficultyID() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL)
                     {
                         if (GameObject* alexstraszaGift = target->SummonGameObject(GO_ALEXSTRASZA_S_GIFT_25, target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(), target->GetOrientation(), 0.0f, 0.0f, 0.0f, 0.0f, 0))
                             _alexstraszaGiftGuid = alexstraszaGift->GetGUID();

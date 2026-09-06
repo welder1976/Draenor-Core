@@ -33,27 +33,6 @@ set(collision_STAT_SRCS
   ${sources_localdir}
 )
 
-MACRO( auto_group ProjectDirectory ProjectSources )
-	SET( DirectorySources "${ProjectSources}" )
-	FOREACH( Source ${DirectorySources} )
-		if ("${Source}" MATCHES "(/)+")
-			STRING( REGEX REPLACE "${ProjectDirectory}" "" RelativePath "${Source}" )
-			STRING( REGEX REPLACE "[\\\\/][^\\\\/]*$" "" RelativePath "${RelativePath}" )
-			STRING( REGEX REPLACE "^[\\\\/]" "" RelativePath "${RelativePath}" )
-			STRING( REGEX REPLACE "/" "\\\\\\\\" RelativePath "${RelativePath}" )
-			SOURCE_GROUP( "${RelativePath}" FILES ${Source} )
-		else()
-			SOURCE_GROUP( "" FILES ${Source} )
-		endif()
-	ENDFOREACH( Source )
-ENDMACRO( auto_group )
-
-auto_group("${CMAKE_CURRENT_SOURCE_DIR}" "${collision_STAT_SRCS}")
-
-set(collision_STAT_SRCS
-  ${collision_STAT_SRCS}
-)
-
 include_directories(
   ${CMAKE_BINARY_DIR}
   ${CMAKE_SOURCE_DIR}/dep/g3dlite/include
@@ -103,9 +82,10 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/Maps
   ${CMAKE_CURRENT_SOURCE_DIR}/Models
   ${CMAKE_CURRENT_SOURCE_DIR}/Pathfinding
-  ${ACE_INCLUDE_DIR}
   ${MYSQL_INCLUDE_DIR}
 )
+
+GroupSources(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(collision STATIC
   ${collision_STAT_SRCS}

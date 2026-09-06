@@ -9,8 +9,8 @@
 #ifndef _PREPAREDSTATEMENT_H
 #define _PREPAREDSTATEMENT_H
 
+#include <future>
 #include "SQLOperation.h"
-#include <ace/Future.h>
 
 //- Union for data buffer (upper-level bind -> queue -> lower-level bind)
 union PreparedStatementDataUnion
@@ -141,25 +141,23 @@ class MySQLPreparedStatement
     private:
         MYSQL_STMT* m_Mstmt;
         uint32 m_paramCount;
-        std::vector<bool> m_paramsSet;
+        std::vector<uint8> m_paramsSet;
         MYSQL_BIND* m_bind;
 };
-
-typedef ACE_Future<PreparedQueryResult> PreparedQueryResultFuture;
 
 //- Lower-level class, enqueuable operation
 class PreparedStatementTask : public SQLOperation
 {
     public:
-        PreparedStatementTask(PreparedStatement* stmt);
-        PreparedStatementTask(PreparedStatement* stmt, PreparedQueryResultFuture result);
+        PreparedStatementTask(PreparedStatement* stmt, bool async = false);
         ~PreparedStatementTask();
 
         bool Execute();
+        PreparedQueryResultFuture GetFuture() { return m_result->get_future(); }
 
     protected:
         PreparedStatement* m_stmt;
         bool m_has_result;
-        PreparedQueryResultFuture m_result;
+        PreparedQueryResultPromise* m_result;
 };
 #endif

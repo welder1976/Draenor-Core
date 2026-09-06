@@ -9,6 +9,10 @@
 #ifndef __WORLDSESSION_H
 #define __WORLDSESSION_H
 
+#include <array>
+#include <atomic>
+#include <functional>
+#include <unordered_map>
 #include "Common.h"
 #include "SharedDefines.h"
 #include "AddonMgr.h"
@@ -19,9 +23,24 @@
 #include "Opcodes.h"
 #include "LFGListMgr.h"
 #include "MSCallback.hpp"
+#include "MessageBuffer.h"
 #ifdef CROSS
 #include "Cross/InterRealmClient.h"
 #endif /* CROSS */
+
+namespace WorldPackets
+{
+    namespace Auth { enum class ConnectToSerial : uint32; }
+    namespace Character { enum class LoginFailureReason : uint8; }
+}
+
+namespace google
+{
+    namespace protobuf
+    {
+        class Message;
+    }
+}
 
 class Creature;
 class GameObject;
@@ -35,6 +54,7 @@ class Unit;
 class Warden;
 class WorldPacket;
 class WorldSocket;
+using WorldTcpSession = WorldSocket;
 struct AreaTableEntry;
 struct AuctionEntry;
 struct DeclinedName;
@@ -46,9 +66,11 @@ struct LfgProposal;
 struct LfgReward;
 struct LfgRoleCheck;
 struct LfgUpdateData;
+struct LfgQueueStatusData;
 struct MovementInfo;
 struct PetBattleRequest;
 class PetBattle;
+class AccountAchievementMgr;
 
 enum AccountDataType
 {
@@ -68,6 +90,18 @@ enum AccountDataType
 #define PER_CHARACTER_CACHE_MASK    0xAA
 
 #define REGISTERED_ADDON_PREFIX_SOFTCAP 64
+
+namespace lfg
+{
+    struct LfgJoinResultData;
+    struct LfgPlayerBoot;
+    struct LfgProposal;
+    struct LfgQueueStatusData;
+    struct LfgPlayerRewardData;
+    struct LfgRoleCheck;
+    struct PlayerQueueData;
+    enum LfgUpdateType : uint32;
+}
 
 struct AccountData
 {
@@ -390,7 +424,7 @@ class WorldSession
 {
     public:
 #ifndef CROSS
-        WorldSession(uint32 id, WorldSocket* sock, AccountTypes sec, bool ispremium, uint8 premiumType, uint8 expansion, time_t mute_time, LocaleConstant locale,
+        WorldSession(uint32 id, WorldTcpSession* sock, AccountTypes sec, bool ispremium, uint8 premiumType, uint8 expansion, time_t mute_time, LocaleConstant locale,
                      uint32 recruiter, bool isARecruiter, uint32 p_VoteRemainingTime, uint32 p_ServiceFlags, uint32 p_CustomFlags);
 #else /* CROSS */
         WorldSession(uint32 id, InterRealmClient* irc, AccountTypes sec, bool ispremium, uint8 expansion, time_t mute_time, LocaleConstant locale,
@@ -427,15 +461,18 @@ class WorldSession
         {
             return MAKE_NEW_GUID(GetAccountId(), 0, HIGHGUID_BNET_ACCOUNT);
         }
+        ObjectGuid GetAccountGUID() { return ObjectGuid(GetWoWAccountGUID()); }
+        ObjectGuid GetBattlenetAccountGUID() { return ObjectGuid(GetBNetAccountGUID()); }
 
         bool PlayerLoading() const { return m_playerLoading; }
         bool PlayerLogout() const { return m_playerLogout; }
         bool PlayerLogoutWithSave() const { return m_playerLogout && m_playerSave; }
         bool PlayerRecentlyLoggedOut() const { return m_playerRecentlyLogout; }
 
-        void ReadAddonsInfo(WorldPacket& data);
+        void ReadAddonsInfo(ByteBuffer& data);
         void SendAddonsInfo();
         void SendFeatureSystemStatus();
+        void SendFeatureSystemStatusGlueScreen();
         void SendTimeZoneInformations();
         bool IsAddonRegistered(const std::string& prefix) const;
 
@@ -451,7 +488,7 @@ class WorldSession
 		void SendQueryTimeResponse();
         void HandleLearnPetSpecialization(WorldPacket& data);
 
-        void SendAuthResponse(uint8 code, bool queued, uint32 queuePos = 0);
+        void SendAuthResponse(uint32 code, bool queued, uint32 queuePos = 0);
         void SendClientCacheVersion(uint32 version);
 
         AccountTypes GetSecurity() const { return _security; }
@@ -460,13 +497,48 @@ class WorldSession
         uint32 GetAccountId() const { return _accountId; }
         Player* GetPlayer() const { return m_Player; }
         std::string GetPlayerName(bool simple = true) const;
+        std::string GetPlayerInfo() const { return GetPlayerName(false); }
         uint32 GetGuidLow() const;
         void SetSecurity(AccountTypes security) { _security = security; }
         std::string const& GetRemoteAddress() { return m_Address; }
+        std::string const& GetAccountName() const { return _accountName; }
+        void SetAccountName(std::string name) { _accountName = std::move(name); }
+        std::string const& GetOS() const { return _os; }
+        void SetOS(std::string os) { _os = std::move(os); }
+
+        void HandleBattlenetRequest(WorldPacket& recvPacket);
+        void HandleBattlenetRequestRealmListTicket(WorldPacket& recvPacket);
+
+        void SendBattlenetResponse(uint32 serviceHash, uint32 methodId, uint32 token, google::protobuf::Message const* response);
+        void SendBattlenetResponse(uint32 serviceHash, uint32 methodId, uint32 token, uint32 status);
+        void SendBattlenetRequest(uint32 serviceHash, uint32 methodId, google::protobuf::Message const* request, std::function<void(MessageBuffer)> callback);
+        void SendBattlenetRequest(uint32 serviceHash, uint32 methodId, google::protobuf::Message const* request);
+
+        std::array<uint8, 32> const& GetRealmListSecret() const { return _realmListSecret; }
+        void SetRealmListSecret(std::array<uint8, 32> const& secret) { _realmListSecret = secret; }
+
+        std::unordered_map<uint32, uint8> const& GetRealmCharacterCounts() const { return _realmCharacterCounts; }
         void SetPlayer(Player* player);
         uint8 Expansion() const { return m_expansion; }
 
         void InitWarden(BigNumber* k, std::string os);
+
+        union ConnectToKey
+        {
+            struct
+            {
+                uint64 AccountId : 32;
+                uint64 ConnectionType : 1;
+                uint64 Key : 31;
+            } Fields;
+            uint64 Raw;
+        };
+
+        uint64 GetConnectToInstanceKey() const { return _instanceConnectKey.Raw; }
+        void SetInstanceSocket(WorldTcpSession* sock) { m_instanceSocket = sock; }
+
+        void SendConnectToInstance(WorldPackets::Auth::ConnectToSerial serial);
+        void AbortLogin(WorldPackets::Character::LoginFailureReason reason);
 
         /// Session in auth.queue currently
         void SetInQueue(bool state) { m_inQueue = state; }
@@ -595,7 +667,7 @@ class WorldSession
         void ResetClientTimeDelay() { m_clientTimeDelay = 0; }
         uint32 getDialogStatus(Player* player, Object* questgiver, uint32 defstatus);
 
-        time_t m_timeOutTime;
+        std::atomic<time_t> m_timeOutTime;
         void UpdateTimeOutTime(uint32 diff)
         {
             if (time_t(diff) > m_timeOutTime)
@@ -669,7 +741,6 @@ class WorldSession
         /// @p_Data1 : Additional data 1
         /// @p_Data2 : Additional data 2
         void SendGameError(GameError::Type p_Error, uint32 p_Data1 = 0xF0F0F0F0, uint32 p_Data2 = 0xF0F0F0F0);
-
 #ifndef CROSS
         /// ============== Cross realm ========================= ///
         uint32 GetInterRealmBG() { return m_InterRealmZoneId; }
@@ -1208,26 +1279,29 @@ class WorldSession
         void HandleBfQueueRequest(WorldPacket &recv_data);
 
         // Looking for Dungeon/Raid
-        void HandleLfgSetCommentOpcode(WorldPacket& recvData);
-        void HandleLfgLockInfoRequestOpcode(WorldPacket& recvData);
+        void HandleLfgGetLockInfoOpcode(WorldPacket& recvData);
+        void SendLfgPlayerLockInfo();
+        void SendLfgPartyLockInfo();
+        void HandleDFGetSystemInfo(WorldPacket& recvData);
         void HandleLfgJoinOpcode(WorldPacket& recvData);
         void HandleLfgLeaveOpcode(WorldPacket& recvData);
-        void HandleDfSetRolesOpcode(WorldPacket& recvData);
+        void HandleLfgSetRolesOpcode(WorldPacket& recvData);
         void HandleLfgProposalResultOpcode(WorldPacket& recvData);
         void HandleLfgSetBootVoteOpcode(WorldPacket& recvData);
         void HandleLfgTeleportOpcode(WorldPacket& recvData);
-        void HandleLfrSearchOpcode(WorldPacket& recvData);
+        void HandleLfrJoinOpcode(WorldPacket& recvData);
         void HandleLfrLeaveOpcode(WorldPacket& recvData);
         void HandleLfgGetStatus(WorldPacket& recvData);
+        void HandleSetLfgBonusFactionId(WorldPacket& recvData);
 
-        void SendLfgRoleChosen(uint64 p_Guid, uint8 p_Roles);
-        void SendLfgRoleCheckUpdate(const LfgRoleCheck* pRoleCheck);
-        void SendLfgUpdateSearch(bool update);
-        void SendLfgJoinResult(uint64 guid_, const LfgJoinResultData& joinData);
-        void SendLfgQueueStatus(uint32 dungeon, int32 waitTime, int32 avgWaitTime, int32 waitTimeTanks, int32 waitTimeHealer, int32 waitTimeDps, uint32 queuedTime, uint8 tanks, uint8 healers, uint8 dps);
-        void SendLfgPlayerReward(uint32 rdungeonEntry, uint32 sdungeonEntry, uint8 done, const LfgReward* reward, const Quest *qRew);
-        void SendLfgBootPlayer(const LfgPlayerBoot* pBoot);
-        void SendLfgUpdateProposal(uint32 proposalId, const LfgProposal *pProp);
+        void SendLfgUpdateStatus(lfg::LfgUpdateType updateType, lfg::PlayerQueueData const& queueData);
+        void SendLfgRoleChosen(uint64 guid, uint8 roles);
+        void SendLfgRoleCheckUpdate(lfg::LfgRoleCheck const& pRoleCheck);
+        void SendLfgJoinResult(uint32 queueId, lfg::LfgJoinResultData const& joinData);
+        void SendLfgQueueStatus(lfg::LfgQueueStatusData const& queueData);
+        void SendLfgPlayerReward(lfg::LfgPlayerRewardData const& lfgPlayerRewardData);
+        void SendLfgBootProposalUpdate(lfg::LfgPlayerBoot const& boot);
+        void SendLfgUpdateProposal(lfg::LfgProposal const& proposal);
         void SendLfgDisabled();
         void SendLfgOfferContinue(uint32 dungeonEntry);
         void SendLfgTeleportError(uint8 err);
@@ -1241,6 +1315,7 @@ class WorldSession
 
         // Lfg List
         void HandleRequestLfgListBlacklist(WorldPacket& p_RecvData);
+        void HandleLfgListGetStatus(WorldPacket& p_RecvData);
         void HandleLfgListJoin(WorldPacket& p_RecvData);
         void HandleLfgListUpdateRequest(WorldPacket& p_RecvData);
         void HandleLfgListLeave(WorldPacket& p_RecvData);
@@ -1397,22 +1472,15 @@ class WorldSession
         void SendBattlePetError(uint32 p_Result, uint32 p_CreatureID);
         void SendBattlePetCageDateError(uint32 p_SecondsUntilCanCage);
         void HandleBattlePetQueryName(WorldPacket& p_RecvData);
-        void HandleBattlePetsReconvert(WorldPacket& p_RecvData);
         void HandleBattlePetUpdateNotify(WorldPacket& p_RecvData);
         void HandleBattlePetRequestJournalLock(WorldPacket& p_RecvData);
         void HandleBattlePetRequestJournal(WorldPacket& p_RecvData);
         void HandleBattlePetDeletePet(WorldPacket& p_RecvData);
         void HandleBattlePetDeletePetCheat(WorldPacket& p_RecvData);
-        void HandleBattlePetDeleteJournal(WorldPacket& p_RecvData);
         void HandleBattlePetModifyName(WorldPacket& p_RecvData);
         void HandleBattlePetSummon(WorldPacket& p_RecvData);
-        void HandleBattlePetSetLevel(WorldPacket& p_RecvData);
         void HandleBattlePetSetBattleSlot(WorldPacket& p_RecvData);
-        void HandleBattlePetSetCollar(WorldPacket& p_RecvData);
         void HandleBattlePetSetFlags(WorldPacket& p_RecvData);
-        void HandleBattlePetsRestoreHealth(WorldPacket& p_RecvData);
-        void HandleBattlePetAdd(WorldPacket& p_RecvData);
-        void HandleBattlePetSetQualityCheat(WorldPacket& p_RecvData);
         void HandleBattlePetCage(WorldPacket& p_RecvData);
 
         /// Pet battle
@@ -1439,12 +1507,9 @@ class WorldSession
         void HandlePetBattleRequestUpdate(WorldPacket& p_RecvData);
         void HandlePetBattleQuitNotify(WorldPacket& p_RecvData);
         void HandlePetBattleFinalNotify(WorldPacket& p_RecvData);
-        void HandlePetBattleScriptErrorNotify(WorldPacket& p_RecvData);
         void HandlePetBattleQueueProposeMatchResult(WorldPacket& p_RecvData);
-        void HandlePetBattleFirstPet(WorldPacket& p_RecvData);
         void HandlePetBattleInput(WorldPacket& p_RecvData);
         void HandlePetBattleReplaceFrontPet(WorldPacket& p_RecvData);
-        void HandlePetBattleDebugQueueDump(WorldPacket& p_RecvData);
 
         //////////////////////////////////////////////////////////////////////////
         /// ToyBox
@@ -1561,6 +1626,12 @@ class WorldSession
 
         AccountTypes _security;
         uint32 _accountId;
+        std::string _accountName;
+        std::string _os;
+        std::array<uint8, 32> _realmListSecret;
+        std::unordered_map<uint32, uint8> _realmCharacterCounts;
+        std::unordered_map<uint32, std::function<void(MessageBuffer)>> _battlenetResponseCallbacks;
+        uint32 _battlenetRequestToken;
         uint8 m_expansion;
 
         uint16 m_ClientBuild;
@@ -1579,7 +1650,9 @@ class WorldSession
         uint64 m_GUID;
         uint64 m_RealGUID; 
 #else
-        WorldSocket* m_Socket;
+        WorldTcpSession* m_Socket;
+        WorldTcpSession* m_instanceSocket;
+        ConnectToKey _instanceConnectKey;
 
 #endif
 
@@ -1632,7 +1705,7 @@ class WorldSession
         bool _filterAddonMessages;
         uint32 recruiterId;
         bool isRecruiter;
-        ACE_Based::LockedQueue<WorldPacket*, ACE_Thread_Mutex> _recvQueue;
+        LockedQueue<WorldPacket*> _recvQueue;
         time_t timeLastWhoCommand;
         time_t timeCharEnumOpcode;
         time_t m_TimeLastChannelInviteCommand;

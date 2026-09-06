@@ -92,8 +92,8 @@ WorldObject::~WorldObject()
     {
         if (GetTypeId() == TYPEID_CORPSE)
         {
-            sLog->outFatal(LOG_FILTER_GENERAL, "Object::~Object Corpse guid=" UI64FMTD ", type=%d, entry=%u deleted but still in map!!", GetGUID(), ((Corpse*)this)->GetType(), GetEntry());
-            ASSERT(false);
+            TC_LOG_FATAL("misc", "Object::~Object Corpse guid=" UI64FMTD ", type=%d, entry=%u deleted but still in map!!", GetGUID(), ((Corpse*)this)->GetType(), GetEntry());
+            ABORT();
         }
         ResetMap();
     }
@@ -103,17 +103,18 @@ Object::~Object()
 {
     if (IsInWorld())
     {
-        sLog->outFatal(LOG_FILTER_GENERAL, "Object::~Object - guid=" UI64FMTD ", typeid=%d, entry=%u deleted but still in world!!", GetGUID(), GetTypeId(), GetEntry());
+        TC_LOG_FATAL("misc", "Object::~Object - guid=" UI64FMTD ", typeid=%d, entry=%u deleted but still in world!!", GetGUID(), GetTypeId(), GetEntry());
         if (isType(TYPEMASK_ITEM))
-            sLog->outFatal(LOG_FILTER_GENERAL, "Item slot %u", ((Item*)this)->GetSlot());
-        //ASSERT(false);
+            TC_LOG_FATAL("misc", "Item slot %u", ((Item*)this)->GetSlot());
+        //ABORT();
         RemoveFromWorld();
     }
 
     if (m_objectUpdated)
     {
-        sLog->outFatal(LOG_FILTER_GENERAL, "Object::~Object - guid=" UI64FMTD ", typeid=%d, entry=%u deleted but still in update list!!", GetGUID(), GetTypeId(), GetEntry());
-        //ASSERT(false);
+
+        TC_LOG_FATAL("misc", "Object::~Object - guid=" UI64FMTD ", typeid=%d, entry=%u deleted but still in update list!!", GetGUID(), GetTypeId(), GetEntry());
+        //ABORT();
         sObjectAccessor->RemoveUpdateObject(this);
     }
 
@@ -256,7 +257,7 @@ void Object::BuildCreateUpdateBlockForPlayer(UpdateData* data, Player* target) c
     if (ToUnit() && ToUnit()->getVictim())
         flags |= UPDATEFLAG_HAS_COMBAT_VICTIM;
 
-    ByteBuffer buf(10 * 1024);
+    ByteBuffer buf(0x400);
     buf << uint8(updateType);
     buf.append(GetPackGUID());
     buf << uint8(m_objectTypeId);
@@ -264,7 +265,6 @@ void Object::BuildCreateUpdateBlockForPlayer(UpdateData* data, Player* target) c
     BuildMovementUpdate(&buf, flags);
     BuildValuesUpdate(updateType, &buf, target);
     BuildDynamicValuesUpdate(updateType, &buf, target);
-
     data->AddUpdateBlock(buf);
 }
 
@@ -282,7 +282,7 @@ void Object::SendUpdateToPlayer(Player* player)
 
 void Object::BuildValuesUpdateBlockForPlayer(UpdateData* data, Player* target) const
 {
-    ByteBuffer buf(5 * 1024);
+    ByteBuffer buf(500);
 
     buf << uint8(UPDATETYPE_VALUES);
     buf.append(GetPackGUID());
@@ -298,208 +298,217 @@ void Object::BuildOutOfRangeUpdateBlock(UpdateData* data) const
     data->AddOutOfRangeGUID(GetGUID());
 }
 
-void Object::DestroyForPlayer(Player* p_Target, bool /*p_OnDeath*/) const
+void Object::DestroyForPlayer(Player* target, bool /*p_OnDeath*/) const
 {
-    ASSERT(p_Target);
+    ASSERT(target);
 
-    /// @TODO Find about new OutOfRange system flags
+    WorldPacket packet(SMSG_UPDATE_OBJECT);
 
-    /// SMSG_DESTROY_OBJECT doesn't exist anymore, now blizz use OUT_OF_RANGE block
-    /// in SMSG_UPDATE_OBJECT to destroy an WorldObject
-    WorldPacket l_Data(SMSG_UPDATE_OBJECT);
+    UpdateData updateData(target->GetMapId());
+    updateData.AddOutOfRangeGUID(GetGUID());
+    updateData.BuildPacket(&packet);
 
-    // Player cannot see creatures from different map ;)
-    uint16 l_MapID = p_Target->GetMapId();
-
-    UpdateData l_Update(l_MapID);
-    l_Update.AddOutOfRangeGUID(GetGUID());
-    l_Update.BuildPacket(&l_Data);
-
-    p_Target->GetSession()->SendPacket(&l_Data);
+    target->GetSession()->SendPacket(&packet);
 }
 
-void Object::BuildMovementUpdate(ByteBuffer* p_Data, uint32 p_Flags) const
+void Object::BuildMovementUpdate(ByteBuffer* data, uint32 flags) const
 {
-    const Unit          * l_Unit            = ToUnit();
-    const GameObject    * l_GameObject      = ToGameObject();
-    const AreaTrigger   * l_AreaTrigger     = ToAreaTrigger();
-
-    uint32 l_FrameCount = l_GameObject && l_GameObject->GetGoType() == GAMEOBJECT_TYPE_TRANSPORT ? l_GameObject->GetGOValue()->Transport.StopFrames->size() : 0;
-    const WorldObject   * l_WorldObject = (const WorldObject*)this;
+    const Unit* unit = ToUnit();
+    const AreaTrigger* at = ToAreaTrigger();
+    const GameObject* go = ToGameObject();
+    const WorldObject * l_WorldObject = (const WorldObject*)this;
 
     /// Normalize movement to avoid client crash
-    if (l_Unit)
-        const_cast<Unit*>(l_Unit)->m_movementInfo.Normalize();
+    if (unit)
+        const_cast<Unit*>(unit)->m_movementInfo.Normalize();
 
-    if (p_Flags & UPDATEFLAG_HAS_COMBAT_VICTIM && (!l_Unit || !l_Unit->getVictim()))
-        p_Flags = p_Flags & ~UPDATEFLAG_HAS_COMBAT_VICTIM;
+    if (flags & UPDATEFLAG_HAS_COMBAT_VICTIM && (!unit || !unit->getVictim()))
+        flags = flags & ~UPDATEFLAG_HAS_COMBAT_VICTIM;
 
-    if (p_Flags & UPDATEFLAG_HAS_VEHICLE_CREATE && !l_Unit)
-        p_Flags = p_Flags & ~UPDATEFLAG_HAS_VEHICLE_CREATE;
+    if (flags & UPDATEFLAG_HAS_VEHICLE_CREATE && !unit)
+        flags = flags & ~UPDATEFLAG_HAS_VEHICLE_CREATE;
 
     if (l_WorldObject->GetAIAnimKitId() || l_WorldObject->GetMovementAnimKitId() || l_WorldObject->GetMeleeAnimKitId())
-        p_Flags |= UPDATEFLAG_HAS_ANIMKITS_CREATE;
+        flags |= UPDATEFLAG_HAS_ANIMKITS_CREATE;
 
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_NO_BIRTH_ANIM);           ///< No birth animation
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_ENABLE_PORTALS);          ///< Unk
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_PLAY_HOVER_ANIM);         ///< Play hover anim
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_SUPPRESSED_GREETINGS);    ///< Suppress NPC greetings
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_MOVEMENT_UPDATE);     ///< Living
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_TRANSPORT_POSITION);  ///< Go Transport Position
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_POSITION);            ///< Stationary Position
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_COMBAT_VICTIM);       ///< Has Target
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_SERVER_TIME);         ///< Transport
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_VEHICLE_CREATE);      ///< Vehicle
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_ANIMKITS_CREATE);     ///< Anim Kits
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_ROTATION);            ///< Rotation
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_AREATRIGGER);         ///< Area trigger
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_HAS_GAMEOBJECT);          ///< Has game object
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_THIS_IS_YOU);             ///< Self
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_REPLACE_YOU);             ///< Replace current self object
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_SCENE_OBJECT);            ///< Scene Object
-    p_Data->WriteBit(p_Flags & UPDATEFLAG_SCENE_PENDING_INSTANCES); ///< Unk
-    p_Data->FlushBits();
+    bool NoBirthAnim = (flags & UPDATEFLAG_NO_BIRTH_ANIM) != 0;
+    bool EnablePortals = (flags & UPDATEFLAG_ENABLE_PORTALS) != 0;
+    bool PlayHoverAnim = (flags & UPDATEFLAG_PLAY_HOVER_ANIM) != 0;
+    bool IsSuppressingGreetings = (flags & UPDATEFLAG_SUPPRESSED_GREETINGS) != 0;
+    bool HasMovementUpdate = (flags & UPDATEFLAG_HAS_MOVEMENT_UPDATE) != 0;
+    bool HasMovementTransport = (flags & UPDATEFLAG_HAS_TRANSPORT_POSITION) != 0;
+    bool Stationary = (flags & UPDATEFLAG_HAS_POSITION) != 0;
+    bool CombatVictim = (flags & UPDATEFLAG_HAS_COMBAT_VICTIM) != 0;
+    bool ServerTime = (flags & UPDATEFLAG_HAS_SERVER_TIME) != 0;
+    bool VehicleCreate = (flags & UPDATEFLAG_HAS_VEHICLE_CREATE) != 0;
+    bool AnimKitCreate = (flags & UPDATEFLAG_HAS_ANIMKITS_CREATE) != 0;
+    bool Rotation = (flags & UPDATEFLAG_HAS_ROTATION) != 0;
+    bool HasAreaTrigger = (flags & UPDATEFLAG_HAS_AREATRIGGER) != 0;
+    bool HasGameObject = (flags & UPDATEFLAG_HAS_GAMEOBJECT) != 0;
+    bool ThisIsYou = (flags & UPDATEFLAG_THIS_IS_YOU) != 0;
+    bool ReplaceActive = (flags & UPDATEFLAG_REPLACE_YOU) != 0;
+    bool SceneObjCreate = (flags & UPDATEFLAG_SCENE_OBJECT) != 0;
+    bool ScenePendingInstances = (flags & UPDATEFLAG_SCENE_PENDING_INSTANCES) != 0;
+    uint32 PauseTimesCount = 0;
+    if (GameObject const* go = ToGameObject())
+        if (go->GetGoType() == GAMEOBJECT_TYPE_TRANSPORT)
+            PauseTimesCount = go->GetGOValue()->Transport.StopFrames->size();
 
-    *p_Data << uint32(l_FrameCount);                                ///< Transport frame count
+    data->WriteBit(NoBirthAnim);
+    data->WriteBit(EnablePortals);
+    data->WriteBit(PlayHoverAnim);
+    data->WriteBit(IsSuppressingGreetings);
+    data->WriteBit(HasMovementUpdate);
+    data->WriteBit(HasMovementTransport);
+    data->WriteBit(Stationary);
+    data->WriteBit(CombatVictim);
+    data->WriteBit(ServerTime);
+    data->WriteBit(VehicleCreate);
+    data->WriteBit(AnimKitCreate);
+    data->WriteBit(Rotation);
+    data->WriteBit(HasAreaTrigger);
+    data->WriteBit(HasGameObject);
+    data->WriteBit(ThisIsYou);
+    data->WriteBit(ReplaceActive);
+    data->WriteBit(SceneObjCreate);
+    data->WriteBit(ScenePendingInstances);
+    *data << uint32(PauseTimesCount);
 
-    if (p_Flags & UPDATEFLAG_HAS_MOVEMENT_UPDATE)
+    if (HasMovementUpdate)
     {
         uint32 l_MovementForceCount = 0;
 
-        bool l_HasSpline = l_Unit->IsSplineEnabled();
+        bool l_HasSpline = unit->IsSplineEnabled();
 
         /// Movement
         {
             uint32 l_RemoveForcesCount  = 0;
-            uint32 l_MovementFlags      = l_Unit->m_movementInfo.GetMovementFlags();
-            uint32 l_ExtraMovementFlags = l_Unit->m_movementInfo.GetExtraMovementFlags();
+            uint32 l_MovementFlags      = unit->m_movementInfo.GetMovementFlags();
+            uint32 l_ExtraMovementFlags = unit->m_movementInfo.GetExtraMovementFlags();
 
-            bool l_HasTransportInformations = l_Unit->m_movementInfo.t_guid != 0;
-            bool l_HasFallData              = l_Unit->HasUnitMovementFlag(MOVEMENTFLAG_FALLING) || l_Unit->m_movementInfo.fallTime != 0;
+            bool l_HasTransportInformations = unit->m_movementInfo.t_guid != 0;
+            bool l_HasFallData              = unit->HasUnitMovementFlag(MOVEMENTFLAG_FALLING) || unit->m_movementInfo.fallTime != 0;
             bool l_HeightChangeFailed       = false;
             bool l_RemoteTimeValid          = false;
 
             /// Prevent client disconnect
-            if (!G3D::fuzzyEq(l_Unit->m_movementInfo.splineElevation, 0.0f) && (l_MovementFlags & MovementFlags::MOVEMENTFLAG_SPLINE_ELEVATION) == 0)
+            if (!G3D::fuzzyEq(unit->m_movementInfo.splineElevation, 0.0f) && (l_MovementFlags & MovementFlags::MOVEMENTFLAG_SPLINE_ELEVATION) == 0)
                 l_MovementFlags |= MovementFlags::MOVEMENTFLAG_SPLINE_ELEVATION;
 
-            p_Data->append(l_Unit->GetPackGUID());                          ///< Mover GUID
-            *p_Data << uint32(getMSTime());                                 ///< Movement Time
-            *p_Data << float(l_Unit->GetPositionX());                       ///< Mover position X
-            *p_Data << float(l_Unit->GetPositionY());                       ///< Mover position Y
-            *p_Data << float(l_Unit->GetPositionZMinusOffset());            ///< Mover position Z
-            *p_Data << float(l_Unit->GetOrientation());                     ///< Mover position O
-            *p_Data << float(l_Unit->m_movementInfo.pitch);                 ///< Mover pitch
-            *p_Data << float(l_Unit->m_movementInfo.splineElevation);       ///< Mover spline elevation
-            *p_Data << uint32(l_RemoveForcesCount);                         ///< Remove force Count
-            *p_Data << uint32(0);                                           ///< Move Index
+            data->append(unit->GetPackGUID());                          ///< Mover GUID
+            *data << uint32(getMSTime());                                 ///< Movement Time
+            *data << float(unit->GetPositionX());                       ///< Mover position X
+            *data << float(unit->GetPositionY());                       ///< Mover position Y
+            *data << float(unit->GetPositionZMinusOffset());            ///< Mover position Z
+            *data << float(unit->GetOrientation());                     ///< Mover position O
+            *data << float(unit->m_movementInfo.pitch);                 ///< Mover pitch
+            *data << float(unit->m_movementInfo.splineElevation);       ///< Mover spline elevation
+            *data << uint32(l_RemoveForcesCount);                         ///< Remove force Count
+            *data << uint32(0);                                           ///< Move Index
 
             for (uint32 l_Frame = 0; l_Frame < l_RemoveForcesCount; l_Frame++)
-                *p_Data << uint32(0);                                       ///< Remove force IDs
+                *data << uint32(0);                                       ///< Remove force IDs
 
-            p_Data->WriteBits(l_MovementFlags, 30);                         ///< Movement flags
-            p_Data->WriteBits(l_ExtraMovementFlags, 16);                    ///< Extra movement flags
-            p_Data->WriteBit(l_HasTransportInformations);                   ///< Has transport informations
-            p_Data->WriteBit(l_HasFallData);                                ///< Has fall data
-            p_Data->WriteBit(l_HasSpline);                                  ///< Has Movement Spline
-            p_Data->WriteBit(l_HeightChangeFailed);                         ///< Height Change Failed
-            p_Data->WriteBit(l_RemoteTimeValid);                            ///< Remote Time Valid
+            data->WriteBits(l_MovementFlags, 30);                         ///< Movement flags
+            data->WriteBits(l_ExtraMovementFlags, 16);                    ///< Extra movement flags
+            data->WriteBit(l_HasTransportInformations);                   ///< Has transport informations
+            data->WriteBit(l_HasFallData);                                ///< Has fall data
+            data->WriteBit(l_HasSpline);                                  ///< Has Movement Spline
+            data->WriteBit(l_HeightChangeFailed);                         ///< Height Change Failed
+            data->WriteBit(l_RemoteTimeValid);                            ///< Remote Time Valid
 
-            p_Data->FlushBits();
+            data->FlushBits();
 
             if (l_HasTransportInformations)
             {
-                p_Data->appendPackGUID(l_Unit->m_movementInfo.t_guid);      ///< Transport Guid
-                *p_Data << float(l_Unit->GetTransOffsetX());                ///< Transport X offset
-                *p_Data << float(l_Unit->GetTransOffsetY());                ///< Transport Y offset
-                *p_Data << float(l_Unit->GetTransOffsetZ());                ///< Transport Z offset
-                *p_Data << float(l_Unit->GetTransOffsetO());                ///< Transport O offset
-                *p_Data << int8(l_Unit->GetTransSeat());                    ///< Transport seat
-                *p_Data << uint32(l_Unit->GetTransTime());                  ///< Transport time 1
+                data->appendPackGUID(unit->m_movementInfo.t_guid);      ///< Transport Guid
+                *data << float(unit->GetTransOffsetX());                ///< Transport X offset
+                *data << float(unit->GetTransOffsetY());                ///< Transport Y offset
+                *data << float(unit->GetTransOffsetZ());                ///< Transport Z offset
+                *data << float(unit->GetTransOffsetO());                ///< Transport O offset
+                *data << int8(unit->GetTransSeat());                    ///< Transport seat
+                *data << uint32(unit->GetTransTime());                  ///< Transport time 1
 
-                p_Data->WriteBit(l_Unit->m_movementInfo.PrevMoveTime);      ///< Has previous movement time
-                p_Data->WriteBit(l_Unit->m_movementInfo.VehicleRecID);      ///< Has vehicle rec ID
-                p_Data->FlushBits();
+                data->WriteBit(unit->m_movementInfo.PrevMoveTime);      ///< Has previous movement time
+                data->WriteBit(unit->m_movementInfo.VehicleRecID);      ///< Has vehicle rec ID
+                data->FlushBits();
 
-                if (l_Unit->m_movementInfo.PrevMoveTime)
-                    *p_Data << uint32(l_Unit->m_movementInfo.PrevMoveTime); ///< Transport time 2
+                if (unit->m_movementInfo.PrevMoveTime)
+                    *data << uint32(unit->m_movementInfo.PrevMoveTime); ///< Transport time 2
 
-                if (l_Unit->m_movementInfo.VehicleRecID)
-                    *p_Data << uint32(l_Unit->m_movementInfo.VehicleRecID); ///< Transport time 3
+                if (unit->m_movementInfo.VehicleRecID)
+                    *data << uint32(unit->m_movementInfo.VehicleRecID); ///< Transport time 3
             }
 
             if (l_HasFallData)
             {
                 bool l_HasFallDirection = true;                             ///< l_Unit->m_movementInfo.hasFallDirection
 
-                *p_Data << uint32(l_Unit->m_movementInfo.fallTime);         ///< Fall time
-                *p_Data << float(l_Unit->m_movementInfo.JumpVelocity);      ///< Horizontal speed
+                *data << uint32(unit->m_movementInfo.fallTime);         ///< Fall time
+                *data << float(unit->m_movementInfo.JumpVelocity);      ///< Horizontal speed
 
-                p_Data->WriteBit(l_HasFallDirection);                       ///< Has fall direction
-                p_Data->FlushBits();
-
-                if (l_HasFallDirection)
+                if (data->WriteBit(l_HasFallDirection))                   ///< Has fall direction
                 {
-                    *p_Data << float(l_Unit->m_movementInfo.j_cosAngle);    ///< Cos angle
-                    *p_Data << float(l_Unit->m_movementInfo.j_sinAngle);    ///< Sin angle
-                    *p_Data << float(l_Unit->m_movementInfo.j_xyspeed);     ///< Vertical speed
+                    *data << float(unit->m_movementInfo.j_cosAngle);    ///< Cos angle
+                    *data << float(unit->m_movementInfo.j_sinAngle);    ///< Sin angle
+                    *data << float(unit->m_movementInfo.j_xyspeed);     ///< Vertical speed
                 }
             }
         }
 
-        *p_Data << l_Unit->GetSpeed(MOVE_WALK);                             ///< Walk speed
-        *p_Data << l_Unit->GetSpeed(MOVE_RUN);                              ///< Run speed
-        *p_Data << l_Unit->GetSpeed(MOVE_RUN_BACK);                         ///< Run back speed
-        *p_Data << l_Unit->GetSpeed(MOVE_SWIM);                             ///< Swim speed
-        *p_Data << l_Unit->GetSpeed(MOVE_SWIM_BACK);                        ///< Swim back speed
-        *p_Data << l_Unit->GetSpeed(MOVE_FLIGHT);                           ///< Flight speed
-        *p_Data << l_Unit->GetSpeed(MOVE_FLIGHT_BACK);                      ///< Flight back speed
-        *p_Data << l_Unit->GetSpeed(MOVE_TURN_RATE);                        ///< Turn rate
-        *p_Data << l_Unit->GetSpeed(MOVE_PITCH_RATE);                       ///< Pitch rate
-        *p_Data << uint32(l_MovementForceCount);                            ///< Movement Force count
+        *data << unit->GetSpeed(MOVE_WALK);                             ///< Walk speed
+        *data << unit->GetSpeed(MOVE_RUN);                              ///< Run speed
+        *data << unit->GetSpeed(MOVE_RUN_BACK);                         ///< Run back speed
+        *data << unit->GetSpeed(MOVE_SWIM);                             ///< Swim speed
+        *data << unit->GetSpeed(MOVE_SWIM_BACK);                        ///< Swim back speed
+        *data << unit->GetSpeed(MOVE_FLIGHT);                           ///< Flight speed
+        *data << unit->GetSpeed(MOVE_FLIGHT_BACK);                      ///< Flight back speed
+        *data << unit->GetSpeed(MOVE_TURN_RATE);                        ///< Turn rate
+        *data << unit->GetSpeed(MOVE_PITCH_RATE);                       ///< Pitch rate
+
+        *data << uint32(l_MovementForceCount);                            ///< Movement Force count
 
         for (uint32 l_Frame = 0; l_Frame < l_MovementForceCount; l_Frame++)
         {
-            *p_Data << uint32(0);                                           ///< ID
-            *p_Data << float(0);                                            ///< Direction X
-            *p_Data << float(0);                                            ///< Direction Y
-            *p_Data << float(0);                                            ///< Direction Z
-            *p_Data << uint32(0);                                           ///< Transport ID
-            *p_Data << float(0);                                            ///< Magnitude
-
-            p_Data->WriteBits(0, 2);                                        ///< Type
-            p_Data->FlushBits();
+            *data << uint32(0);                                           ///< ID
+            *data << float(0);                                            ///< Direction X
+            *data << float(0);                                            ///< Direction Y
+            *data << float(0);                                            ///< Direction Z
+            *data << uint32(0);                                           ///< Transport ID
+            *data << float(0);                                            ///< Magnitude
+            data->WriteBits(0, 2);                                        ///< Type
+            data->FlushBits();
         }
 
-        p_Data->WriteBit(l_HasSpline);                                      ///< Has spline data
-        p_Data->FlushBits();
+        data->WriteBit(l_HasSpline);                                      ///< Has spline data
+        data->FlushBits();
 
         if (l_HasSpline)
         {
-            Movement::MoveSpline* l_Spline = l_Unit->movespline;
+            Movement::MoveSpline* l_Spline = unit->movespline;
 
-            *p_Data << uint32(l_Spline->GetId());                           ///< Move spline ID
+            *data << uint32(l_Spline->GetId());                           ///< Move spline ID
 
             if (!l_Spline->isCyclic())
             {
                 Movement::Vector3 l_FinalDestination = l_Spline->FinalDestination();
 
-                *p_Data << float(l_FinalDestination.x);                     ///< Spline destination X
-                *p_Data << float(l_FinalDestination.y);                     ///< Spline destination Y
-                *p_Data << float(l_FinalDestination.z);                     ///< Spline destination Z
+                *data << float(l_FinalDestination.x);                     ///< Spline destination X
+                *data << float(l_FinalDestination.y);                     ///< Spline destination Y
+                *data << float(l_FinalDestination.z);                     ///< Spline destination Z
             }
             else
             {
                 /// I've seen always the third points as Spline destination... Don't know why
                 Movement::Vector3 l_Destination = l_Spline->spline.last() > 2 ? l_Spline->spline.getPoint(2) : l_Spline->spline.getPoint(l_Spline->spline.last());
 
-                *p_Data << float(l_Destination.x);                                        ///< Spline destination X
-                *p_Data << float(l_Destination.y);                                        ///< Spline destination Y
-                *p_Data << float(l_Destination.z);                                        ///< Spline destination Z
+                *data << float(l_Destination.x);                                        ///< Spline destination X
+                *data << float(l_Destination.y);                                        ///< Spline destination Y
+                *data << float(l_Destination.z);                                        ///< Spline destination Z
             }
 
-            p_Data->WriteBit(!l_Spline->Finalized());                       ///< HasSplineMove
-            p_Data->FlushBits();
+            data->WriteBit(!l_Spline->Finalized());                       ///< HasSplineMove
+            data->FlushBits();
 
             if (!l_Spline->Finalized())
             {
@@ -522,53 +531,53 @@ void Object::BuildMovementUpdate(ByteBuffer* p_Data, uint32 p_Flags) const
                         break;
                 }
 
-                p_Data->WriteBits(l_Spline->splineflags.raw(), 28);         ///< Spline flags
-                p_Data->WriteBits(l_FinalFacingMove, 2);                    ///< Final facing computation
-                p_Data->WriteBit(l_HasJumpGravity);                         ///< Is an parabolic movement and it's not ended
-                p_Data->WriteBit(l_HasSpecialTime);                         ///< Is an parabolic movement or it's animated
-                p_Data->WriteBits(uint8(l_Spline->spline.mode()), 2);       ///< Spline mode
-                p_Data->WriteBit(l_HasFilterKeys);                          ///< Has unk spline part
-                p_Data->FlushBits();
+                data->WriteBits(l_Spline->splineflags.raw(), 28);         ///< Spline flags
+                data->WriteBits(l_FinalFacingMove, 2);                    ///< Final facing computation
+                data->WriteBit(l_HasJumpGravity);                         ///< Is an parabolic movement and it's not ended
+                data->WriteBit(l_HasSpecialTime);                         ///< Is an parabolic movement or it's animated
+                data->WriteBits(uint8(l_Spline->spline.mode()), 2);       ///< Spline mode
+                data->WriteBit(l_HasFilterKeys);                          ///< Has unk spline part
+                data->FlushBits();
 
-                *p_Data << uint32(l_Spline->time_passed);                   ///< Time passed
-                *p_Data << uint32(l_Spline->Duration());                    ///< Total spline duration
-                *p_Data << float(1.0f);                                     ///< DurationMod
-                *p_Data << float(1.0f);                                     ///< DurationModNext
-                *p_Data << uint32(l_Spline->getPath().size());              ///< Path node count
+                *data << uint32(l_Spline->time_passed);                   ///< Time passed
+                *data << uint32(l_Spline->Duration());                    ///< Total spline duration
+                *data << float(1.0f);                                     ///< DurationMod
+                *data << float(1.0f);                                     ///< DurationModNext
+                *data << uint32(l_Spline->getPath().size());              ///< Path node count
 
                 if (l_FinalFacingMove == 3)
-                    *p_Data << float(l_Spline->facing.angle);               ///< Final facing angle
+                    *data << float(l_Spline->facing.angle);               ///< Final facing angle
 
                 if (l_FinalFacingMove == 2)
-                    p_Data->appendPackGUID(l_Spline->facing.target);        ///< Final facing target object
+                    data->appendPackGUID(l_Spline->facing.target);        ///< Final facing target object
 
                 if (l_FinalFacingMove == 1)
                 {
-                    *p_Data << float(l_Spline->facing.f.x);                 ///< Final facing X
-                    *p_Data << float(l_Spline->facing.f.y);                 ///< Final facing Y
-                    *p_Data << float(l_Spline->facing.f.z);                 ///< Final facing Z
+                    *data << float(l_Spline->facing.f.x);                 ///< Final facing X
+                    *data << float(l_Spline->facing.f.y);                 ///< Final facing Y
+                    *data << float(l_Spline->facing.f.z);                 ///< Final facing Z
                 }
 
                 if (l_HasJumpGravity)
-                    *p_Data << float(l_Spline->vertical_acceleration);      ///< Vertical acceleration
+                    *data << float(l_Spline->vertical_acceleration);      ///< Vertical acceleration
 
                 if (l_HasSpecialTime)
-                    *p_Data << uint32(l_Spline->effect_start_time);         ///< Effect start time
+                    *data << uint32(l_Spline->effect_start_time);         ///< Effect start time
 
                 if (l_HasFilterKeys)
                 {
                     uint32 l_FilterKeysCount = 0;
 
-                    *p_Data << uint32(l_FilterKeysCount);                   ///< Filter Keys Count
+                    *data << uint32(l_FilterKeysCount);                   ///< Filter Keys Count
 
                     for (uint32 l_Block = 0; l_Block < l_FilterKeysCount; l_Block++)
                     {
-                        *p_Data << float(0);                                ///< In
-                        *p_Data << float(0);                                ///< Out
+                        *data << float(0);                                ///< In
+                        *data << float(0);                                ///< Out
                     }
 
-                    p_Data->WriteBits(0, 2);                                ///< Filter Flags
-                    p_Data->FlushBits();
+                    data->WriteBits(0, 2);                                ///< Filter Flags
+                    data->FlushBits();
                 }
 
                 for (uint32 l_I = 0; l_I < l_Spline->getPath().size(); l_I++)
@@ -576,77 +585,77 @@ void Object::BuildMovementUpdate(ByteBuffer* p_Data, uint32 p_Flags) const
                     float l_Salt = (float(l_I) / 1000.0f);
 
                     /// Add a salt in points because the client doesn't like to have 2 time the same points
-                    *p_Data << float(l_Spline->getPath()[l_I].x + l_Salt);  ///< Path node X
-                    *p_Data << float(l_Spline->getPath()[l_I].y);           ///< Path node Y
-                    *p_Data << float(l_Spline->getPath()[l_I].z);           ///< Path node Z
+                    *data << float(l_Spline->getPath()[l_I].x + l_Salt);  ///< Path node X
+                    *data << float(l_Spline->getPath()[l_I].y);           ///< Path node Y
+                    *data << float(l_Spline->getPath()[l_I].z);           ///< Path node Z
                 }
             }
             else
-                p_Data->FlushBits();
+                data->FlushBits();
         }
     }
 
-    if (p_Flags & UPDATEFLAG_HAS_TRANSPORT_POSITION)
+    if (HasMovementTransport)
     {
-        p_Data->appendPackGUID(l_WorldObject->m_movementInfo.t_guid);       ///< Transport Guid
-        *p_Data << float(l_WorldObject->GetTransOffsetX());                 ///< Transport X offset
-        *p_Data << float(l_WorldObject->GetTransOffsetY());                 ///< Transport Y offset
-        *p_Data << float(l_WorldObject->GetTransOffsetZ());                 ///< Transport Z offset
-        *p_Data << float(l_WorldObject->GetTransOffsetO());                 ///< Transport O offset
-        *p_Data << int8(l_WorldObject->GetTransSeat());                     ///< Transport seat
-        *p_Data << uint32(l_WorldObject->GetTransTime());                   ///< Transport time 1
+        data->appendPackGUID(l_WorldObject->m_movementInfo.t_guid);       ///< Transport Guid
+        *data << float(l_WorldObject->GetTransOffsetX());                 ///< Transport X offset
+        *data << float(l_WorldObject->GetTransOffsetY());                 ///< Transport Y offset
+        *data << float(l_WorldObject->GetTransOffsetZ());                 ///< Transport Z offset
+        *data << float(l_WorldObject->GetTransOffsetO());                 ///< Transport O offset
+        *data << int8(l_WorldObject->GetTransSeat());                     ///< Transport seat
+        *data << uint32(l_WorldObject->GetTransTime());                   ///< Transport time 1
 
-        p_Data->WriteBit(l_WorldObject->m_movementInfo.PrevMoveTime);            ///< Has transport time 2
-        p_Data->WriteBit(l_WorldObject->m_movementInfo.VehicleRecID);            ///< Has transport time 3
-        p_Data->FlushBits();
+        data->WriteBit(l_WorldObject->m_movementInfo.PrevMoveTime);            ///< Has transport time 2
+        data->WriteBit(l_WorldObject->m_movementInfo.VehicleRecID);            ///< Has transport time 3
+        data->FlushBits();
 
         if (l_WorldObject->m_movementInfo.PrevMoveTime)
-            *p_Data << uint32(l_WorldObject->m_movementInfo.PrevMoveTime);       ///< Transport time 2
+            *data << uint32(l_WorldObject->m_movementInfo.PrevMoveTime);       ///< Transport time 2
 
         if (l_WorldObject->m_movementInfo.VehicleRecID)
-            *p_Data << uint32(l_WorldObject->m_movementInfo.VehicleRecID);       ///< Transport time 3
+            *data << uint32(l_WorldObject->m_movementInfo.VehicleRecID);       ///< Transport time 3
     }
 
-    if (p_Flags & UPDATEFLAG_HAS_POSITION)
+    if (Stationary)
     {
-        *p_Data << float(l_WorldObject->GetStationaryX());                  ///< Stationary position X
-        *p_Data << float(l_WorldObject->GetStationaryY());                  ///< Stationary position Y
-        *p_Data << float(l_WorldObject->GetStationaryZ());                  ///< Stationary position Z
-        *p_Data << float(l_WorldObject->GetStationaryO());                  ///< Stationary position O
+        *data << float(l_WorldObject->GetStationaryX());                  ///< Stationary position X
+        *data << float(l_WorldObject->GetStationaryY());                  ///< Stationary position Y
+        *data << float(l_WorldObject->GetStationaryZ());                  ///< Stationary position Z
+        *data << float(l_WorldObject->GetStationaryO());                  ///< Stationary position O
     }
 
-    if (p_Flags & UPDATEFLAG_HAS_COMBAT_VICTIM)
-        p_Data->appendPackGUID(l_Unit->getVictim()->GetGUID());             ///< Target victim guid
+    if (CombatVictim)
+        data->appendPackGUID(unit->getVictim()->GetGUID());             ///< Target victim guid
 
-    if (p_Flags & UPDATEFLAG_HAS_SERVER_TIME)
+    if (ServerTime)
     {
         uint32 l_TransportTime = getMSTime();
 
-        if (l_GameObject && l_GameObject->ToTransport())
-            l_TransportTime = l_GameObject->GetGOValue()->Transport.PathProgress;
+        if (go && go->ToTransport())
+            l_TransportTime = go->GetGOValue()->Transport.PathProgress;
 
-        *p_Data << uint32(l_TransportTime);                                 ///< Transport time
+        *data << uint32(l_TransportTime);                                 ///< Transport time
     }
 
-    if (p_Flags & UPDATEFLAG_HAS_VEHICLE_CREATE)
+    if (VehicleCreate)
     {
-        *p_Data << uint32(l_Unit->GetVehicleKit()->GetVehicleInfo()->m_ID); ///< Vehicle ID
-        *p_Data << float(l_Unit->GetOrientation());                         ///< Vehicle orientation
+        *data << uint32(unit->GetVehicleKit()->GetVehicleInfo()->m_ID); ///< Vehicle ID
+        *data << float(unit->GetOrientation());                         ///< Vehicle orientation
     }
 
-    if (p_Flags & UPDATEFLAG_HAS_ANIMKITS_CREATE)
+    if (AnimKitCreate)
     {
-        *p_Data << uint16(l_WorldObject->GetAIAnimKitId());                 ///< AnimKit1
-        *p_Data << uint16(l_WorldObject->GetMovementAnimKitId());           ///< AnimKit2
-        *p_Data << uint16(l_WorldObject->GetMeleeAnimKitId());              ///< AnimKit3
+        *data << uint16(l_WorldObject->GetAIAnimKitId());                 ///< AnimKit1
+        *data << uint16(l_WorldObject->GetMovementAnimKitId());           ///< AnimKit2
+        *data << uint16(l_WorldObject->GetMeleeAnimKitId());              ///< AnimKit3
     }
 
-    if (p_Flags & UPDATEFLAG_HAS_ROTATION)
-        *p_Data << uint64(l_GameObject->GetRotation());                     ///< Game object rotation quaternion
+    if (Rotation)
+        *data << uint64(go->GetRotation());                     ///< Game object rotation quaternion
 
-    if (p_Flags & UPDATEFLAG_HAS_AREATRIGGER)
+    if (HasAreaTrigger)
     {
-        AreaTriggerTemplate const* l_MainTemplate = l_AreaTrigger->GetMainTemplate();
+        AreaTriggerTemplate const* l_MainTemplate = at->GetMainTemplate();
 
         /// We need to find the true conditions for HasAreaTriggerSpline.
         bool l_AbsoluteOrientation      = l_MainTemplate->HasAbsoluteOrientation();
@@ -663,86 +672,86 @@ void Object::BuildMovementUpdate(ByteBuffer* p_Data, uint32 p_Flags) const
         bool l_HasAreaTriggerBox        = l_MainTemplate->HasAreaTriggerBox();
         bool l_HasAreaTriggerPolygon    = l_MainTemplate->HasAreaTriggerPolygon();
         bool l_HasAreaTriggerCylinder   = l_MainTemplate->HasAreaTriggerCylinder();
-        bool l_HasAreaTriggerSpline     = l_MainTemplate->m_MoveCurveID || (l_AreaTrigger->GetTrajectory() != AREATRIGGER_INTERPOLATION_NONE && l_AreaTrigger->GetUpdateInterval() > 0);
+        bool l_HasAreaTriggerSpline     = l_MainTemplate->m_MoveCurveID || (at->GetTrajectory() != AREATRIGGER_INTERPOLATION_NONE && at->GetUpdateInterval() > 0);
 
-        uint32 l_ElapsedMS = l_AreaTrigger->GetCreatedTime();
+        uint32 l_ElapsedMS = at->GetCreatedTime();
 
-        *p_Data << uint32(l_ElapsedMS);                                                 ///< Elapsed MS
-        *p_Data << float(0);                                                            ///< Roll Pitch Yaw X
-        *p_Data << float(0);                                                            ///< Roll Pitch Yaw Y
-        *p_Data << float(0);                                                            ///< Roll Pitch Yaw Z
+        *data << uint32(l_ElapsedMS);                                                 ///< Elapsed MS
+        *data << float(0);                                                            ///< Roll Pitch Yaw X
+        *data << float(0);                                                            ///< Roll Pitch Yaw Y
+        *data << float(0);                                                            ///< Roll Pitch Yaw Z
 
-        p_Data->WriteBit(l_AbsoluteOrientation);                                        ///< Absolute Orientation
-        p_Data->WriteBit(l_DynamicShape);                                               ///< Dynamic Shape
-        p_Data->WriteBit(l_Attached);                                                   ///< Attached
-        p_Data->WriteBit(l_FaceMovementDir);                                            ///< Face Movement Dir
-        p_Data->WriteBit(l_FollowsTerrain);                                             ///< Follows Terrain
-        p_Data->WriteBit(0);                                                            ///< Unk bit 6.2.0 could also be swapped with the other bits above
-        p_Data->WriteBit(l_HasTargetRollPitchYaw);                                      ///< HasTargetRollPitchYaw
-        p_Data->WriteBit(l_HasScaleCurveID);                                            ///< Has Scale Curve ID
-        p_Data->WriteBit(l_HasMorphCurveID);                                            ///< Has Morph Curve ID
-        p_Data->WriteBit(l_HasFacingCurveID);                                           ///< Has Facing Curve ID
-        p_Data->WriteBit(l_HasMoveCurveID);                                             ///< Has Move Curve ID
-        p_Data->WriteBit(l_HasAreaTriggerSphere);                                       ///< Has visual radius
-        p_Data->WriteBit(l_HasAreaTriggerBox);                                          ///< Has AreaTrigger Box
-        p_Data->WriteBit(l_HasAreaTriggerPolygon);                                      ///< Has AreaTrigger Polygon
-        p_Data->WriteBit(l_HasAreaTriggerCylinder);                                     ///< Has AreaTrigger Cylinder
-        p_Data->WriteBit(l_HasAreaTriggerSpline);                                       ///< Has interpolated movement
-        p_Data->FlushBits();
+        data->WriteBit(l_AbsoluteOrientation);                                        ///< Absolute Orientation
+        data->WriteBit(l_DynamicShape);                                               ///< Dynamic Shape
+        data->WriteBit(l_Attached);                                                   ///< Attached
+        data->WriteBit(l_FaceMovementDir);                                            ///< Face Movement Dir
+        data->WriteBit(l_FollowsTerrain);                                             ///< Follows Terrain
+        data->WriteBit(0);                                                            ///< Unk bit 6.2.0 could also be swapped with the other bits above
+        data->WriteBit(l_HasTargetRollPitchYaw);                                      ///< HasTargetRollPitchYaw
+        data->WriteBit(l_HasScaleCurveID);                                            ///< Has Scale Curve ID
+        data->WriteBit(l_HasMorphCurveID);                                            ///< Has Morph Curve ID
+        data->WriteBit(l_HasFacingCurveID);                                           ///< Has Facing Curve ID
+        data->WriteBit(l_HasMoveCurveID);                                             ///< Has Move Curve ID
+        data->WriteBit(l_HasAreaTriggerSphere);                                       ///< Has visual radius
+        data->WriteBit(l_HasAreaTriggerBox);                                          ///< Has AreaTrigger Box
+        data->WriteBit(l_HasAreaTriggerPolygon);                                      ///< Has AreaTrigger Polygon
+        data->WriteBit(l_HasAreaTriggerCylinder);                                     ///< Has AreaTrigger Cylinder
+        data->WriteBit(l_HasAreaTriggerSpline);                                       ///< Has interpolated movement
+        data->FlushBits();
 
         if (l_HasTargetRollPitchYaw)
         {
-            *p_Data << float(0);                                                        ///< Target Roll Pitch Yaw X
-            *p_Data << float(0);                                                        ///< Target Roll Pitch Yaw Y
-            *p_Data << float(0);                                                        ///< Target Roll Pitch Yaw Z
+            *data << float(0);                                                        ///< Target Roll Pitch Yaw X
+            *data << float(0);                                                        ///< Target Roll Pitch Yaw Y
+            *data << float(0);                                                        ///< Target Roll Pitch Yaw Z
         }
 
         if (l_HasScaleCurveID)
-            *p_Data << uint32(l_MainTemplate->m_ScaleCurveID);                           ///< Scale Curve ID
+            *data << uint32(l_MainTemplate->m_ScaleCurveID);                           ///< Scale Curve ID
 
         if (l_HasMorphCurveID)
-            *p_Data << uint32(l_MainTemplate->m_MorphCurveID);                           ///< Morph Curve ID
+            *data << uint32(l_MainTemplate->m_MorphCurveID);                           ///< Morph Curve ID
 
         if (l_HasFacingCurveID)
-            *p_Data << uint32(l_MainTemplate->m_FacingCurveID);                          ///< Facing Curve ID
+            *data << uint32(l_MainTemplate->m_FacingCurveID);                          ///< Facing Curve ID
 
         if (l_HasMoveCurveID)
-            *p_Data << uint32(l_MainTemplate->m_MoveCurveID);                            ///< Move Curve ID
+            *data << uint32(l_MainTemplate->m_MoveCurveID);                            ///< Move Curve ID
 
         if (l_HasAreaTriggerSphere)
         {
-            *p_Data << float(l_MainTemplate->m_ScaleX);                                  ///< Radius
-            *p_Data << float(l_MainTemplate->m_ScaleY);                                  ///< Radius Target
+            *data << float(l_MainTemplate->m_ScaleX);                                  ///< Radius
+            *data << float(l_MainTemplate->m_ScaleY);                                  ///< Radius Target
         }
 
         if (l_HasAreaTriggerBox)
         {
-            *p_Data << float(l_MainTemplate->m_BoxDatas.m_Extent[0]);                    ///< Extents X
-            *p_Data << float(l_MainTemplate->m_BoxDatas.m_Extent[1]);                    ///< Extents Y
-            *p_Data << float(l_MainTemplate->m_BoxDatas.m_Extent[2]);                    ///< Extents Z
-            *p_Data << float(l_MainTemplate->m_BoxDatas.m_ExtentTarget[0]);              ///< Extents Target X
-            *p_Data << float(l_MainTemplate->m_BoxDatas.m_ExtentTarget[1]);              ///< Extents Target Y
-            *p_Data << float(l_MainTemplate->m_BoxDatas.m_ExtentTarget[2]);              ///< Extents Target Z
+            *data << float(l_MainTemplate->m_BoxDatas.m_Extent[0]);                    ///< Extents X
+            *data << float(l_MainTemplate->m_BoxDatas.m_Extent[1]);                    ///< Extents Y
+            *data << float(l_MainTemplate->m_BoxDatas.m_Extent[2]);                    ///< Extents Z
+            *data << float(l_MainTemplate->m_BoxDatas.m_ExtentTarget[0]);              ///< Extents Target X
+            *data << float(l_MainTemplate->m_BoxDatas.m_ExtentTarget[1]);              ///< Extents Target Y
+            *data << float(l_MainTemplate->m_BoxDatas.m_ExtentTarget[2]);              ///< Extents Target Z
         }
 
         if (l_HasAreaTriggerPolygon)
         {
-            const AreaTriggerTemplateList& l_Templates = l_AreaTrigger->GetTemplates();
+            const AreaTriggerTemplateList& l_Templates = at->GetTemplates();
 
-            uint32 l_VerticesCount          = l_AreaTrigger->GetMainTemplate()->m_PolygonDatas.m_VerticesCount;
-            uint32 l_VerticesTargetCount    = l_AreaTrigger->GetMainTemplate()->m_PolygonDatas.m_VerticesTargetCount;
+            uint32 l_VerticesCount          = at->GetMainTemplate()->m_PolygonDatas.m_VerticesCount;
+            uint32 l_VerticesTargetCount    = at->GetMainTemplate()->m_PolygonDatas.m_VerticesTargetCount;
 
-            *p_Data << uint32(l_VerticesCount);                                         ///< Vertices Count
-            *p_Data << uint32(l_VerticesTargetCount);                                   ///< Vertices Target Count
-            *p_Data << float(l_MainTemplate->m_PolygonDatas.m_Height);                   ///< Height
-            *p_Data << float(l_MainTemplate->m_PolygonDatas.m_HeightTarget);             ///< Height Target
+            *data << uint32(l_VerticesCount);                                         ///< Vertices Count
+            *data << uint32(l_VerticesTargetCount);                                   ///< Vertices Target Count
+            *data << float(l_MainTemplate->m_PolygonDatas.m_Height);                   ///< Height
+            *data << float(l_MainTemplate->m_PolygonDatas.m_HeightTarget);             ///< Height Target
 
             if (l_MainTemplate->m_PolygonDatas.m_VerticesCount > 0)
             {
                 for (AreaTriggerTemplate l_Template : l_Templates)
                 {
-                    *p_Data << float(l_Template.m_PolygonDatas.m_Vertices[0]);          ///< X
-                    *p_Data << float(l_Template.m_PolygonDatas.m_Vertices[1]);          ///< Y
+                    *data << float(l_Template.m_PolygonDatas.m_Vertices[0]);          ///< X
+                    *data << float(l_Template.m_PolygonDatas.m_Vertices[1]);          ///< Y
                 }
             }
 
@@ -750,94 +759,94 @@ void Object::BuildMovementUpdate(ByteBuffer* p_Data, uint32 p_Flags) const
             {
                 for (AreaTriggerTemplate l_Template : l_Templates)
                 {
-                    *p_Data << float(l_Template.m_PolygonDatas.m_VerticesTarget[0]);    ///< X
-                    *p_Data << float(l_Template.m_PolygonDatas.m_VerticesTarget[1]);    ///< Y
+                    *data << float(l_Template.m_PolygonDatas.m_VerticesTarget[0]);    ///< X
+                    *data << float(l_Template.m_PolygonDatas.m_VerticesTarget[1]);    ///< Y
                 }
             }
         }
 
         if (l_HasAreaTriggerCylinder)
         {
-            *p_Data << float(l_MainTemplate->m_CylinderDatas.Radius);                    ///< Extents X
-            *p_Data << float(l_MainTemplate->m_CylinderDatas.RadiusTarget);              ///< Extents Y
-            *p_Data << float(l_MainTemplate->m_CylinderDatas.Height);                    ///< Extents X
-            *p_Data << float(l_MainTemplate->m_CylinderDatas.HeightTarget);              ///< Extents Y
-            *p_Data << float(l_MainTemplate->m_CylinderDatas.Unk1);                      ///< Extents X
-            *p_Data << float(l_MainTemplate->m_CylinderDatas.Unk2);                      ///< Extents Y
+            *data << float(l_MainTemplate->m_CylinderDatas.Radius);                    ///< Extents X
+            *data << float(l_MainTemplate->m_CylinderDatas.RadiusTarget);              ///< Extents Y
+            *data << float(l_MainTemplate->m_CylinderDatas.Height);                    ///< Extents X
+            *data << float(l_MainTemplate->m_CylinderDatas.HeightTarget);              ///< Extents Y
+            *data << float(l_MainTemplate->m_CylinderDatas.Unk1);                      ///< Extents X
+            *data << float(l_MainTemplate->m_CylinderDatas.Unk2);                      ///< Extents Y
         }
 
         if (l_HasAreaTriggerSpline)
         {
             AreaTriggerMoveTemplate l_MoveTemplate = sObjectMgr->GetAreaTriggerMoveTemplate(l_MainTemplate->m_MoveCurveID);
-            if (l_AreaTrigger->GetTrajectory() != AREATRIGGER_INTERPOLATION_LINEAR && l_MoveTemplate.m_path_size != 0)
+            if (at->GetTrajectory() != AREATRIGGER_INTERPOLATION_LINEAR && l_MoveTemplate.m_path_size != 0)
             {
-                *p_Data << uint32(l_MoveTemplate.m_duration > 0 ? l_MoveTemplate.m_duration : l_AreaTrigger->GetDuration());  ///< Time To Target
-                *p_Data << uint32(l_ElapsedMS);                                             ///< Elapsed Time For Movement
-                *p_Data << uint32(l_MoveTemplate.m_path_size);                             ///< Path node count
+                *data << uint32(l_MoveTemplate.m_duration > 0 ? l_MoveTemplate.m_duration : at->GetDuration());  ///< Time To Target
+                *data << uint32(l_ElapsedMS);                                             ///< Elapsed Time For Movement
+                *data << uint32(l_MoveTemplate.m_path_size);                             ///< Path node count
                 for (uint32 l_I = 0; l_I < l_MoveTemplate.m_path_size; l_I++)
                 {
                     Position l_Pos;
-                    l_AreaTrigger->GetPositionFromPathId(l_I, &l_Pos);
+                    at->GetPositionFromPathId(l_I, &l_Pos);
 
-                    *p_Data << float(l_Pos.m_positionX);                                    ///< Node position X
-                    *p_Data << float(l_Pos.m_positionY);                                    ///< Node position Y
-                    *p_Data << float(l_Pos.m_positionZ);                                    ///< Node position Z
+                    *data << float(l_Pos.m_positionX);                                    ///< Node position X
+                    *data << float(l_Pos.m_positionY);                                    ///< Node position Y
+                    *data << float(l_Pos.m_positionZ);                                    ///< Node position Z
                 }
             }
             else
             {
-                uint32 l_PathNodeCount = l_AreaTrigger->GetTimeToTarget() / l_AreaTrigger->GetUpdateInterval();
+                uint32 l_PathNodeCount = at->GetTimeToTarget() / at->GetUpdateInterval();
 
-                *p_Data << uint32(l_AreaTrigger->GetTimeToTarget());                        ///< Time To Target
-                *p_Data << uint32(l_ElapsedMS);                                             ///< Elapsed Time For Movement
-                *p_Data << uint32(l_PathNodeCount);                                         ///< Path node count
+                *data << uint32(at->GetTimeToTarget());                        ///< Time To Target
+                *data << uint32(l_ElapsedMS);                                             ///< Elapsed Time For Movement
+                *data << uint32(l_PathNodeCount);                                         ///< Path node count
                 for (uint32 l_I = 0; l_I < l_PathNodeCount; l_I++)
                 {
                     Position l_Pos;
-                    l_AreaTrigger->GetPositionAtTime(l_AreaTrigger->GetTimeToTarget() * l_I / l_PathNodeCount, &l_Pos);
+                    at->GetPositionAtTime(at->GetTimeToTarget() * l_I / l_PathNodeCount, &l_Pos);
 
-                    *p_Data << float(l_Pos.m_positionX);                                    ///< Node position X
-                    *p_Data << float(l_Pos.m_positionY);                                    ///< Node position Y
-                    *p_Data << float(l_Pos.m_positionZ);                                    ///< Node position Z
+                    *data << float(l_Pos.m_positionX);                                    ///< Node position X
+                    *data << float(l_Pos.m_positionY);                                    ///< Node position Y
+                    *data << float(l_Pos.m_positionZ);                                    ///< Node position Z
                 }
             }
         }
     }
 
-    if (p_Flags & UPDATEFLAG_HAS_GAMEOBJECT)
+    if (HasGameObject)
     {
-        *p_Data << uint32(l_GameObject->GetGOInfo()->WorldEffectID);
+        *data << uint32(go->GetGOInfo()->WorldEffectID);
 
-        if (p_Data->WriteBit(0))
+        if (data->WriteBit(0))
         {
-            p_Data->FlushBits();
-            *p_Data << uint32(0);
+            data->FlushBits();
+            *data << uint32(0);
         }
         else
-            p_Data->FlushBits();
+            data->FlushBits();
     }
 
-    if (p_Flags & UPDATEFLAG_SCENE_OBJECT)
+    if (SceneObjCreate)
     {
         /// TODO
     }
 
-    if (p_Flags & UPDATEFLAG_SCENE_PENDING_INSTANCES)
+    if (ScenePendingInstances)
     {
         uint32 l_SceneInstanceIDsCount = 0;
 
-        *p_Data << uint32(l_SceneInstanceIDsCount);                                     ///< Scene Instance IDs Count
+        *data << uint32(l_SceneInstanceIDsCount);                                     ///< Scene Instance IDs Count
 
         for (uint32 l_I = 0; l_I < l_SceneInstanceIDsCount; ++l_I)
         {
-            *p_Data << uint32(0);                                                       ///< Scene Instance IDs
+            *data << uint32(0);                                                       ///< Scene Instance IDs
         }
     }
 
-    if (l_FrameCount > 0)
+    if (PauseTimesCount > 0)
     {
-        for (uint32 l_Frame : *l_GameObject->GetGOValue()->Transport.StopFrames)
-            *p_Data << uint32(l_Frame);
+        for (uint32 l_Frame : *go->GetGOValue()->Transport.StopFrames)
+            *data << uint32(l_Frame);
     }
 }
 
@@ -1324,7 +1333,7 @@ void Object::SetByteValue(uint16 index, uint8 offset, uint8 value)
 
     if (offset > 4)
     {
-        sLog->outError(LOG_FILTER_GENERAL, "Object::SetByteValue: wrong offset %u", offset);
+        TC_LOG_ERROR("server.worldserver", "Object::SetByteValue: wrong offset %u", offset);
         return;
     }
 
@@ -1348,7 +1357,7 @@ void Object::SetUInt16Value(uint16 index, uint8 offset, uint16 value)
 
     if (offset > 2)
     {
-        sLog->outError(LOG_FILTER_GENERAL, "Object::SetUInt16Value: wrong offset %u", offset);
+        TC_LOG_ERROR("server.worldserver", "Object::SetUInt16Value: wrong offset %u", offset);
         return;
     }
 
@@ -1460,7 +1469,7 @@ void Object::SetByteFlag(uint16 index, uint8 offset, uint8 newFlag)
 
     if (offset > 4)
     {
-        sLog->outError(LOG_FILTER_GENERAL, "Object::SetByteFlag: wrong offset %u", offset);
+        TC_LOG_ERROR("server.worldserver", "Object::SetByteFlag: wrong offset %u", offset);
         return;
     }
 
@@ -1483,7 +1492,7 @@ void Object::RemoveByteFlag(uint16 index, uint8 offset, uint8 oldFlag)
 
     if (offset > 4)
     {
-        sLog->outError(LOG_FILTER_GENERAL, "Object::RemoveByteFlag: wrong offset %u", offset);
+        TC_LOG_ERROR("server.worldserver", "Object::RemoveByteFlag: wrong offset %u", offset);
         return;
     }
 
@@ -1639,7 +1648,7 @@ void Object::SetDynamicValue(uint16 index, uint8 offset, uint32 value)
 
 bool Object::PrintIndexError(uint32 index, bool set) const
 {
-    sLog->outError(LOG_FILTER_GENERAL, "Attempt %s non-existed value field: %u (count: %u) for object typeid: %u type mask: %u", (set ? "set value to" : "get value from"), index, m_valuesCount, GetTypeId(), m_objectType);
+    TC_LOG_ERROR("server.worldserver", "Attempt %s non-existed value field: %u (count: %u) for object typeid: %u type mask: %u", (set ? "set value to" : "get value from"), index, m_valuesCount, GetTypeId(), m_objectType);
 
     // ASSERT must fail after function call
     return false;
@@ -1703,32 +1712,32 @@ ByteBuffer& operator<<(ByteBuffer& buf, Position::PositionXYZOStreamer const& st
 
 void MovementInfo::OutDebug()
 {
-    sLog->outInfo(LOG_FILTER_GENERAL, "MOVEMENT INFO");
-    sLog->outInfo(LOG_FILTER_GENERAL, "guid " UI64FMTD, guid);
-    sLog->outInfo(LOG_FILTER_GENERAL, "flags %u", flags);
-    sLog->outInfo(LOG_FILTER_GENERAL, "flags2 %u", flags2);
-    sLog->outInfo(LOG_FILTER_GENERAL, "time %u current time " UI64FMTD "", flags2, uint64(::time(NULL)));
-    sLog->outInfo(LOG_FILTER_GENERAL, "position: `%s`", pos.ToString().c_str());
+    TC_LOG_INFO("misc", "MOVEMENT INFO");
+    TC_LOG_INFO("misc", "guid " UI64FMTD, guid);
+    TC_LOG_INFO("misc", "flags %u", flags);
+    TC_LOG_INFO("misc", "flags2 %u", flags2);
+    TC_LOG_INFO("misc", "time %u current time " UI64FMTD "", flags2, uint64(::time(NULL)));
+    TC_LOG_INFO("misc", "position: `%s`", pos.ToString().c_str());
     if (t_guid)
     {
-        sLog->outInfo(LOG_FILTER_GENERAL, "TRANSPORT:");
-        sLog->outInfo(LOG_FILTER_GENERAL, "guid: " UI64FMTD, t_guid);
-        sLog->outInfo(LOG_FILTER_GENERAL, "position: `%s`", t_pos.ToString().c_str());
-        sLog->outInfo(LOG_FILTER_GENERAL, "seat: %i", t_seat);
-        sLog->outInfo(LOG_FILTER_GENERAL, "time: %u", t_time);
+        TC_LOG_INFO("misc", "TRANSPORT:");
+        TC_LOG_INFO("misc", "guid: " UI64FMTD, t_guid);
+        TC_LOG_INFO("misc", "position: `%s`", t_pos.ToString().c_str());
+        TC_LOG_INFO("misc", "seat: %i", t_seat);
+        TC_LOG_INFO("misc", "time: %u", t_time);
         if (flags2 & MOVEMENTFLAG2_INTERPOLATED_MOVEMENT)
-            sLog->outInfo(LOG_FILTER_GENERAL, "time2: %u", PrevMoveTime);
+            TC_LOG_INFO("misc", "time2: %u", PrevMoveTime);
     }
 
     if ((flags & (MOVEMENTFLAG_SWIMMING | MOVEMENTFLAG_FLYING)) || (flags2 & MOVEMENTFLAG2_ALWAYS_ALLOW_PITCHING))
-        sLog->outInfo(LOG_FILTER_GENERAL, "pitch: %f", pitch);
+        TC_LOG_INFO("misc", "pitch: %f", pitch);
 
-    sLog->outInfo(LOG_FILTER_GENERAL, "fallTime: %u", fallTime);
+    TC_LOG_INFO("misc", "fallTime: %u", fallTime);
     if (flags & MOVEMENTFLAG_FALLING)
-        sLog->outInfo(LOG_FILTER_GENERAL, "j_zspeed: %f j_sinAngle: %f j_cosAngle: %f j_xyspeed: %f", JumpVelocity, j_sinAngle, j_cosAngle, j_xyspeed);
+        TC_LOG_INFO("misc", "j_zspeed: %f j_sinAngle: %f j_cosAngle: %f j_xyspeed: %f", JumpVelocity, j_sinAngle, j_cosAngle, j_xyspeed);
 
     if (flags & MOVEMENTFLAG_SPLINE_ELEVATION)
-        sLog->outInfo(LOG_FILTER_GENERAL, "splineElevation: %f", splineElevation);
+        TC_LOG_INFO("misc", "splineElevation: %f", splineElevation);
 }
 
 void MovementInfo::Normalize()
@@ -2222,8 +2231,8 @@ void WorldObject::GetRandomPoint(const Position &pos, float distance, float &ran
     rand_y = pos.m_positionY + new_dist * std::sin(angle);
     rand_z = pos.m_positionZ;
 
-    JadeCore::NormalizeMapCoord(rand_x);
-    JadeCore::NormalizeMapCoord(rand_y);
+    Trinity::NormalizeMapCoord(rand_x);
+    Trinity::NormalizeMapCoord(rand_y);
     UpdateGroundPositionZ(rand_x, rand_y, rand_z);            // update to LOS height if available
 }
 
@@ -2300,7 +2309,7 @@ void WorldObject::UpdateAllowedPositionZ(float x, float y, float &z) const
 
 bool Position::IsPositionValid() const
 {
-    return JadeCore::IsValidMapCoord(m_positionX, m_positionY, m_positionZ, m_orientation);
+    return Trinity::IsValidMapCoord(m_positionX, m_positionY, m_positionZ, m_orientation);
 }
 
 float WorldObject::GetGridActivationRange() const
@@ -2614,7 +2623,7 @@ void Object::ForceValuesUpdateAtIndex(uint32 i)
     }
 }
 
-namespace JadeCore
+namespace Trinity
 {
     class MonsterChatBuilder
     {
@@ -2655,68 +2664,68 @@ namespace JadeCore
             uint32 i_language;
             uint64 i_targetGUID;
     };
-}                                                           // namespace JadeCore
+}                                                           // namespace Trinity
 
 void WorldObject::MonsterSay(const char* text, uint32 language, uint64 TargetGuid)
 {
-    CellCoord p = JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY());
+    CellCoord p = Trinity::ComputeCellCoord(GetPositionX(), GetPositionY());
 
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::MonsterCustomChatBuilder say_build(*this, CHAT_MSG_MONSTER_SAY, text, language, TargetGuid);
-    JadeCore::LocalizedPacketDo<JadeCore::MonsterCustomChatBuilder> say_do(say_build);
-    JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterCustomChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY), say_do);
-    TypeContainerVisitor<JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterCustomChatBuilder> >, WorldTypeMapContainer > message(say_worker);
+    Trinity::MonsterCustomChatBuilder say_build(*this, CHAT_MSG_MONSTER_SAY, text, language, TargetGuid);
+    Trinity::LocalizedPacketDo<Trinity::MonsterCustomChatBuilder> say_do(say_build);
+    Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterCustomChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY), say_do);
+    TypeContainerVisitor<Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterCustomChatBuilder> >, WorldTypeMapContainer > message(say_worker);
     cell.Visit(p, message, *GetMap(), *this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY));
 }
 
 void WorldObject::MonsterSay(int32 textId, uint32 language, uint64 TargetGuid)
 {
-    CellCoord p = JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY());
+    CellCoord p = Trinity::ComputeCellCoord(GetPositionX(), GetPositionY());
 
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::MonsterChatBuilder say_build(*this, CHAT_MSG_MONSTER_SAY, textId, language, TargetGuid);
-    JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> say_do(say_build);
-    JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY), say_do);
-    TypeContainerVisitor<JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> >, WorldTypeMapContainer > message(say_worker);
+    Trinity::MonsterChatBuilder say_build(*this, CHAT_MSG_MONSTER_SAY, textId, language, TargetGuid);
+    Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> say_do(say_build);
+    Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY), say_do);
+    TypeContainerVisitor<Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> >, WorldTypeMapContainer > message(say_worker);
     cell.Visit(p, message, *GetMap(), *this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_SAY));
 }
 
 void WorldObject::MonsterYell(const char* text, uint32 language, uint64 TargetGuid)
 {
-    CellCoord p = JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY());
+    CellCoord p = Trinity::ComputeCellCoord(GetPositionX(), GetPositionY());
 
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::MonsterCustomChatBuilder say_build(*this, CHAT_MSG_MONSTER_YELL, text, language, TargetGuid);
-    JadeCore::LocalizedPacketDo<JadeCore::MonsterCustomChatBuilder> say_do(say_build);
-    JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterCustomChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_YELL), say_do);
-    TypeContainerVisitor<JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterCustomChatBuilder> >, WorldTypeMapContainer > message(say_worker);
+    Trinity::MonsterCustomChatBuilder say_build(*this, CHAT_MSG_MONSTER_YELL, text, language, TargetGuid);
+    Trinity::LocalizedPacketDo<Trinity::MonsterCustomChatBuilder> say_do(say_build);
+    Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterCustomChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_YELL), say_do);
+    TypeContainerVisitor<Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterCustomChatBuilder> >, WorldTypeMapContainer > message(say_worker);
     cell.Visit(p, message, *GetMap(), *this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_YELL));
 }
 
 void WorldObject::MonsterYell(int32 textId, uint32 language, uint64 TargetGuid)
 {
-    CellCoord p = JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY());
+    CellCoord p = Trinity::ComputeCellCoord(GetPositionX(), GetPositionY());
 
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::MonsterChatBuilder say_build(*this, CHAT_MSG_MONSTER_YELL, textId, language, TargetGuid);
-    JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> say_do(say_build);
-    JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_YELL), say_do);
-    TypeContainerVisitor<JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> >, WorldTypeMapContainer > message(say_worker);
+    Trinity::MonsterChatBuilder say_build(*this, CHAT_MSG_MONSTER_YELL, textId, language, TargetGuid);
+    Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> say_do(say_build);
+    Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_YELL), say_do);
+    TypeContainerVisitor<Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> >, WorldTypeMapContainer > message(say_worker);
     cell.Visit(p, message, *GetMap(), *this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_YELL));
 }
 
 void WorldObject::MonsterYellToZone(int32 textId, uint32 language, uint64 TargetGuid)
 {
-    JadeCore::MonsterChatBuilder say_build(*this, CHAT_MSG_MONSTER_YELL, textId, language, TargetGuid);
-    JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> say_do(say_build);
+    Trinity::MonsterChatBuilder say_build(*this, CHAT_MSG_MONSTER_YELL, textId, language, TargetGuid);
+    Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> say_do(say_build);
 
     uint32 zoneid = GetZoneId();
 
@@ -2735,15 +2744,15 @@ void WorldObject::MonsterTextEmote(const char* text, uint64 TargetGuid, bool IsB
 
 void WorldObject::MonsterTextEmote(int32 textId, uint64 TargetGuid, bool IsBossEmote)
 {
-    CellCoord p = JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY());
+    CellCoord p = Trinity::ComputeCellCoord(GetPositionX(), GetPositionY());
 
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::MonsterChatBuilder say_build(*this, IsBossEmote ? CHAT_MSG_RAID_BOSS_EMOTE : CHAT_MSG_MONSTER_EMOTE, textId, LANG_UNIVERSAL, TargetGuid);
-    JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> say_do(say_build);
-    JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_TEXTEMOTE), say_do);
-    TypeContainerVisitor<JadeCore::PlayerDistWorker<JadeCore::LocalizedPacketDo<JadeCore::MonsterChatBuilder> >, WorldTypeMapContainer > message(say_worker);
+    Trinity::MonsterChatBuilder say_build(*this, IsBossEmote ? CHAT_MSG_RAID_BOSS_EMOTE : CHAT_MSG_MONSTER_EMOTE, textId, LANG_UNIVERSAL, TargetGuid);
+    Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> say_do(say_build);
+    Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> > say_worker(this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_TEXTEMOTE), say_do);
+    TypeContainerVisitor<Trinity::PlayerDistWorker<Trinity::LocalizedPacketDo<Trinity::MonsterChatBuilder> >, WorldTypeMapContainer > message(say_worker);
     cell.Visit(p, message, *GetMap(), *this, sWorld->getFloatConfig(CONFIG_LISTEN_RANGE_TEXTEMOTE));
 }
 
@@ -2828,7 +2837,7 @@ void WorldObject::SendMessageToSetInRange(WorldPacket* data, float dist, bool /*
             return;
 
 #endif /* CROSS */
-    JadeCore::MessageDistDeliverer notifier(this, data, dist, false, nullptr, p_IgnoredList);
+    Trinity::MessageDistDeliverer notifier(this, data, dist, false, nullptr, p_IgnoredList);
     VisitNearbyWorldObject(dist, notifier);
 }
 
@@ -2840,7 +2849,7 @@ void WorldObject::SendMessageToSet(WorldPacket* data, Player const* skipped_rcvr
             return;
     
 #endif /* CROSS */
-    JadeCore::MessageDistDeliverer notifier(this, data, GetVisibilityRange(), false, skipped_rcvr, p_IgnoredList);
+    Trinity::MessageDistDeliverer notifier(this, data, GetVisibilityRange(), false, skipped_rcvr, p_IgnoredList);
     VisitNearbyWorldObject(GetVisibilityRange(), notifier);
 }
 
@@ -2859,8 +2868,8 @@ void WorldObject::SetMap(Map* map)
         return;
     if (m_currMap)
     {
-        sLog->outFatal(LOG_FILTER_GENERAL, "WorldObject::SetMap: obj %u new map %u %u, old map %u %u", (uint32)GetTypeId(), map->GetId(), map->GetInstanceId(), m_currMap->GetId(), m_currMap->GetInstanceId());
-        ASSERT(false);
+        TC_LOG_FATAL("misc", "WorldObject::SetMap: obj %u new map %u %u, old map %u %u", (uint32)GetTypeId(), map->GetId(), map->GetInstanceId(), m_currMap->GetId(), m_currMap->GetInstanceId());
+        ABORT();
     }
     m_currMap = map;
     m_mapId = map->GetId();
@@ -2894,7 +2903,7 @@ void WorldObject::AddObjectToRemoveList()
     Map* map = FindMap();
     if (!map)
     {
-        sLog->outError(LOG_FILTER_GENERAL, "Object (TypeId: %u Entry: %u GUID: %u) at attempt add to move list not have valid map (Id: %u).", GetTypeId(), GetEntry(), GetGUIDLow(), GetMapId());
+        TC_LOG_ERROR("server.worldserver", "Object (TypeId: %u Entry: %u GUID: %u) at attempt add to move list not have valid map (Id: %u).", GetTypeId(), GetEntry(), GetGUIDLow(), GetMapId());
         return;
     }
 
@@ -3080,7 +3089,7 @@ TempSummon* WorldObject::SummonCreature(uint32 entry, const Position &pos, TempS
     {
         m_summonCounter++;
         if (m_summonCounter > 50 && isType(TYPEMASK_PLAYER))
-            sLog->outAshran("Player %u spam summon of creature %u [counter %u]", GetGUIDLow(), entry, m_summonCounter);
+            TC_LOG_ERROR("server.worldserver", "Player %u spam summon of creature %u [counter %u]", GetGUIDLow(), entry, m_summonCounter);
     }
 
     if (Map* map = FindMap())
@@ -3149,7 +3158,7 @@ void Player::SummonPet(uint32 entry, float x, float y, float z, float ang, PetTy
 
             auto l_QueryHolderResultFuture = l_Database->DelayQueryHolder(l_PetHolder);
 
-            sWorld->AddQueryHolderCallback(QueryHolderCallback(l_QueryHolderResultFuture, [entry, x, y, z, ang, petType, duration, l_LoadPetSlotID, slotID, stampeded, p_Callback, l_Pet, currentPet, l_PlayerGUID](SQLQueryHolder* p_QueryHolder) -> void
+            sWorld->AddQueryHolderCallback(QueryHolderCallback(std::move(l_QueryHolderResultFuture), [entry, x, y, z, ang, petType, duration, l_LoadPetSlotID, slotID, stampeded, p_Callback, l_Pet, currentPet, l_PlayerGUID](SQLQueryHolder* p_QueryHolder) -> void
             {
                 Player* l_Player = sObjectAccessor->FindPlayer(l_PlayerGUID);
                 if (!l_Player || !p_QueryHolder)
@@ -3227,7 +3236,7 @@ void Player::SummonPet(uint32 entry, float x, float y, float z, float ang, PetTy
     l_Pet->Relocate(x, y, z, ang);
     if (!l_Pet->IsPositionValid())
     {
-        sLog->outError(LOG_FILTER_GENERAL, "Pet (guidlow %d, entry %d) not summoned. Suggested coordinates isn't valid (X: %f Y: %f)", l_Pet->GetGUIDLow(), l_Pet->GetEntry(), l_Pet->GetPositionX(), l_Pet->GetPositionY());
+        TC_LOG_ERROR("server.worldserver", "Pet (guidlow %d, entry %d) not summoned. Suggested coordinates isn't valid (X: %f Y: %f)", l_Pet->GetGUIDLow(), l_Pet->GetEntry(), l_Pet->GetPositionX(), l_Pet->GetPositionY());
         delete l_Pet;
         p_Callback(nullptr, false);
         return;
@@ -3341,7 +3350,7 @@ GameObject* WorldObject::SummonGameObject(uint32 entry, float x, float y, float 
     GameObjectTemplate const* goinfo = sObjectMgr->GetGameObjectTemplate(entry);
     if (!goinfo)
     {
-        sLog->outError(LOG_FILTER_SQL, "Gameobject template %u not found in database!", entry);
+        TC_LOG_ERROR("sql.sql", "Gameobject template %u not found in database!", entry);
         return NULL;
     }
     Map* map = GetMap();
@@ -3429,8 +3438,8 @@ void WorldObject::SummonCreatureGroup(uint8 group, std::list<TempSummon*>& list)
 Creature* WorldObject::FindNearestCreature(uint32 entry, float range, bool alive) const
 {
     Creature* creature = NULL;
-    JadeCore::NearestCreatureEntryWithLiveStateInObjectRangeCheck checker(*this, entry, alive, range);
-    JadeCore::CreatureLastSearcher<JadeCore::NearestCreatureEntryWithLiveStateInObjectRangeCheck> searcher(this, creature, checker);
+    Trinity::NearestCreatureEntryWithLiveStateInObjectRangeCheck checker(*this, entry, alive, range);
+    Trinity::CreatureLastSearcher<Trinity::NearestCreatureEntryWithLiveStateInObjectRangeCheck> searcher(this, creature, checker);
     VisitNearbyObject(range, searcher);
     return creature;
 }
@@ -3438,8 +3447,8 @@ Creature* WorldObject::FindNearestCreature(uint32 entry, float range, bool alive
 GameObject* WorldObject::FindNearestGameObject(uint32 entry, float range) const
 {
     GameObject* go = NULL;
-    JadeCore::NearestGameObjectEntryInObjectRangeCheck checker(*this, entry, range);
-    JadeCore::GameObjectLastSearcher<JadeCore::NearestGameObjectEntryInObjectRangeCheck> searcher(this, go, checker);
+    Trinity::NearestGameObjectEntryInObjectRangeCheck checker(*this, entry, range);
+    Trinity::GameObjectLastSearcher<Trinity::NearestGameObjectEntryInObjectRangeCheck> searcher(this, go, checker);
     VisitNearbyGridObject(range, searcher);
     return go;
 }
@@ -3448,8 +3457,8 @@ GameObject* WorldObject::FindNearestGameObject(float p_Range) const
 {
     GameObject* l_GameObject = nullptr;
 
-    JadeCore::NearestGameObjectInObjectRangeCheck l_Checker(*this, p_Range);
-    JadeCore::GameObjectLastSearcher<JadeCore::NearestGameObjectInObjectRangeCheck> l_Searcher(this, l_GameObject, l_Checker);
+    Trinity::NearestGameObjectInObjectRangeCheck l_Checker(*this, p_Range);
+    Trinity::GameObjectLastSearcher<Trinity::NearestGameObjectInObjectRangeCheck> l_Searcher(this, l_GameObject, l_Checker);
     VisitNearbyGridObject(p_Range, l_Searcher);
 
     return l_GameObject;
@@ -3458,8 +3467,8 @@ GameObject* WorldObject::FindNearestGameObject(float p_Range) const
 GameObject* WorldObject::FindNearestGameObjectOfType(GameobjectTypes type, float range) const
 {
     GameObject* go = NULL;
-    JadeCore::NearestGameObjectTypeInObjectRangeCheck checker(*this, type, range);
-    JadeCore::GameObjectLastSearcher<JadeCore::NearestGameObjectTypeInObjectRangeCheck> searcher(this, go, checker);
+    Trinity::NearestGameObjectTypeInObjectRangeCheck checker(*this, type, range);
+    Trinity::GameObjectLastSearcher<Trinity::NearestGameObjectTypeInObjectRangeCheck> searcher(this, go, checker);
     VisitNearbyGridObject(range, searcher);
     return go;
 }
@@ -3467,8 +3476,8 @@ GameObject* WorldObject::FindNearestGameObjectOfType(GameobjectTypes type, float
 Player* WorldObject::FindNearestPlayer(float range, bool alive)
 {
     Player* player = NULL;
-    JadeCore::AnyPlayerInObjectRangeCheck check(this, range, alive);
-    JadeCore::PlayerSearcher<JadeCore::AnyPlayerInObjectRangeCheck> searcher(this, player, check);
+    Trinity::AnyPlayerInObjectRangeCheck check(this, range, alive);
+    Trinity::PlayerSearcher<Trinity::AnyPlayerInObjectRangeCheck> searcher(this, player, check);
     VisitNearbyWorldObject(range, searcher);
     return player;
 }
@@ -3476,55 +3485,55 @@ Player* WorldObject::FindNearestPlayer(float range, bool alive)
 AreaTrigger* WorldObject::FindNearestAreaTrigger(uint32 p_SpellID, float p_Range) const
 {
     AreaTrigger* l_AreaTrigger = nullptr;
-    JadeCore::NearestAreaTriggerWithIDInObjectRangeCheck l_Check(*this, p_SpellID, p_Range);
-    JadeCore::AreaTriggerSearcher<JadeCore::NearestAreaTriggerWithIDInObjectRangeCheck>l_Searcher(this, l_AreaTrigger, l_Check);
+    Trinity::NearestAreaTriggerWithIDInObjectRangeCheck l_Check(*this, p_SpellID, p_Range);
+    Trinity::AreaTriggerSearcher<Trinity::NearestAreaTriggerWithIDInObjectRangeCheck>l_Searcher(this, l_AreaTrigger, l_Check);
     VisitNearbyObject(p_Range, l_Searcher);
     return l_AreaTrigger;
 }
 
 void WorldObject::GetGameObjectListWithEntryInGrid(std::list<GameObject*>& gameobjectList, uint32 entry, float maxSearchRange) const
 {
-    CellCoord pair(JadeCore::ComputeCellCoord(this->GetPositionX(), this->GetPositionY()));
+    CellCoord pair(Trinity::ComputeCellCoord(this->GetPositionX(), this->GetPositionY()));
     Cell cell(pair);
     cell.SetNoCreate();
 
-    JadeCore::AllGameObjectsWithEntryInRange check(this, entry, maxSearchRange);
-    JadeCore::GameObjectListSearcher<JadeCore::AllGameObjectsWithEntryInRange> searcher(this, gameobjectList, check);
-    TypeContainerVisitor<JadeCore::GameObjectListSearcher<JadeCore::AllGameObjectsWithEntryInRange>, GridTypeMapContainer> visitor(searcher);
+    Trinity::AllGameObjectsWithEntryInRange check(this, entry, maxSearchRange);
+    Trinity::GameObjectListSearcher<Trinity::AllGameObjectsWithEntryInRange> searcher(this, gameobjectList, check);
+    TypeContainerVisitor<Trinity::GameObjectListSearcher<Trinity::AllGameObjectsWithEntryInRange>, GridTypeMapContainer> visitor(searcher);
 
     cell.Visit(pair, visitor, *(this->GetMap()), *this, maxSearchRange);
 }
 
 void WorldObject::GetCreatureListWithEntryInGrid(std::list<Creature*>& creatureList, uint32 entry, float maxSearchRange) const
 {
-    CellCoord pair(JadeCore::ComputeCellCoord(this->GetPositionX(), this->GetPositionY()));
+    CellCoord pair(Trinity::ComputeCellCoord(this->GetPositionX(), this->GetPositionY()));
     Cell cell(pair);
     cell.SetNoCreate();
 
-    JadeCore::AllCreaturesOfEntryInRange check(this, entry, maxSearchRange);
-    JadeCore::CreatureListSearcher<JadeCore::AllCreaturesOfEntryInRange> searcher(this, creatureList, check);
-    TypeContainerVisitor<JadeCore::CreatureListSearcher<JadeCore::AllCreaturesOfEntryInRange>, GridTypeMapContainer> visitor(searcher);
+    Trinity::AllCreaturesOfEntryInRange check(this, entry, maxSearchRange);
+    Trinity::CreatureListSearcher<Trinity::AllCreaturesOfEntryInRange> searcher(this, creatureList, check);
+    TypeContainerVisitor<Trinity::CreatureListSearcher<Trinity::AllCreaturesOfEntryInRange>, GridTypeMapContainer> visitor(searcher);
 
     cell.Visit(pair, visitor, *(this->GetMap()), *this, maxSearchRange);
 }
 
 void WorldObject::GetCreatureListInGrid(std::list<Creature*>& creatureList, float maxSearchRange) const
 {
-    CellCoord pair(JadeCore::ComputeCellCoord(this->GetPositionX(), this->GetPositionY()));
+    CellCoord pair(Trinity::ComputeCellCoord(this->GetPositionX(), this->GetPositionY()));
     Cell cell(pair);
     cell.SetNoCreate();
 
-    JadeCore::AllCreaturesInRange check(this, maxSearchRange);
-    JadeCore::CreatureListSearcher<JadeCore::AllCreaturesInRange> searcher(this, creatureList, check);
-    TypeContainerVisitor<JadeCore::CreatureListSearcher<JadeCore::AllCreaturesInRange>, GridTypeMapContainer> visitor(searcher);
+    Trinity::AllCreaturesInRange check(this, maxSearchRange);
+    Trinity::CreatureListSearcher<Trinity::AllCreaturesInRange> searcher(this, creatureList, check);
+    TypeContainerVisitor<Trinity::CreatureListSearcher<Trinity::AllCreaturesInRange>, GridTypeMapContainer> visitor(searcher);
 
     cell.Visit(pair, visitor, *(this->GetMap()), *this, maxSearchRange);
 }
 
 void WorldObject::GetPlayerListInGrid(std::list<Player*>& playerList, float maxSearchRange, bool p_Self /*= false*/) const
 {
-    JadeCore::AnyPlayerInObjectRangeCheck checker(this, maxSearchRange, true, p_Self);
-    JadeCore::PlayerListSearcher<JadeCore::AnyPlayerInObjectRangeCheck> searcher(this, playerList, checker);
+    Trinity::AnyPlayerInObjectRangeCheck checker(this, maxSearchRange, true, p_Self);
+    Trinity::PlayerListSearcher<Trinity::AnyPlayerInObjectRangeCheck> searcher(this, playerList, checker);
     VisitNearbyWorldObject(maxSearchRange, searcher);
 }
 
@@ -3553,13 +3562,13 @@ std::list<Creature*> WorldObject::FindAllCreaturesInRange(float range)
 	float x, y, z;
 	this->GetPosition(x, y, z);
 
-	CellCoord pair(JadeCore::ComputeCellCoord(x, y));
+	CellCoord pair(Trinity::ComputeCellCoord(x, y));
 	Cell cell(pair);
 	cell.SetNoCreate();
 
-	JadeCore::AllCreaturesInRange check(this, 100);
-	JadeCore::CreatureListSearcher<JadeCore::AllCreaturesInRange> searcher(this, templist, check);
-	TypeContainerVisitor<JadeCore::CreatureListSearcher<JadeCore::AllCreaturesInRange>, GridTypeMapContainer> cSearcher(searcher);
+	Trinity::AllCreaturesInRange check(this, 100);
+	Trinity::CreatureListSearcher<Trinity::AllCreaturesInRange> searcher(this, templist, check);
+	TypeContainerVisitor<Trinity::CreatureListSearcher<Trinity::AllCreaturesInRange>, GridTypeMapContainer> cSearcher(searcher);
 	cell.Visit(pair, cSearcher, *(this->GetMap()), *this, this->GetGridActivationRange());
 
 	return templist;
@@ -3573,13 +3582,13 @@ std::list<Creature*> WorldObject::FindAllFriendlyCreaturesInRange(float range)
 		float x, y, z;
 		unit->GetPosition(x, y, z);
 
-		CellCoord pair(JadeCore::ComputeCellCoord(x, y));
+		CellCoord pair(Trinity::ComputeCellCoord(x, y));
 		Cell cell(pair);
 		cell.SetNoCreate();
 
-		JadeCore::AllFriendlyCreaturesInRange check(unit, 100);
-		JadeCore::CreatureListSearcher<JadeCore::AllFriendlyCreaturesInRange> searcher(unit, templist, check);
-		TypeContainerVisitor<JadeCore::CreatureListSearcher<JadeCore::AllFriendlyCreaturesInRange>, GridTypeMapContainer> cSearcher(searcher);
+		Trinity::AllFriendlyCreaturesInRange check(unit, 100);
+		Trinity::CreatureListSearcher<Trinity::AllFriendlyCreaturesInRange> searcher(unit, templist, check);
+		TypeContainerVisitor<Trinity::CreatureListSearcher<Trinity::AllFriendlyCreaturesInRange>, GridTypeMapContainer> cSearcher(searcher);
 		cell.Visit(pair, cSearcher, *(unit->GetMap()), *unit, unit->GetGridActivationRange());
 	}
 	return templist;
@@ -3593,20 +3602,20 @@ std::list<Creature*> WorldObject::FindAllUnfriendlyCreaturesInRange(float range)
 		float x, y, z;
 		unit->GetPosition(x, y, z);
 
-		CellCoord pair(JadeCore::ComputeCellCoord(x, y));
+		CellCoord pair(Trinity::ComputeCellCoord(x, y));
 		Cell cell(pair);
 		cell.SetNoCreate();
 
-		JadeCore::AllUnfriendlyCreaturesInRange check(unit, 100);
-		JadeCore::CreatureListSearcher<JadeCore::AllUnfriendlyCreaturesInRange> searcher(unit, templist, check);
-		TypeContainerVisitor<JadeCore::CreatureListSearcher<JadeCore::AllUnfriendlyCreaturesInRange>, GridTypeMapContainer> cSearcher(searcher);
+		Trinity::AllUnfriendlyCreaturesInRange check(unit, 100);
+		Trinity::CreatureListSearcher<Trinity::AllUnfriendlyCreaturesInRange> searcher(unit, templist, check);
+		TypeContainerVisitor<Trinity::CreatureListSearcher<Trinity::AllUnfriendlyCreaturesInRange>, GridTypeMapContainer> cSearcher(searcher);
 		cell.Visit(pair, cSearcher, *(unit->GetMap()), *unit, unit->GetGridActivationRange());
 	}
 	return templist;
 }
 
 /*
-namespace JadeCore
+namespace Trinity
 {
     class NearUsedPosDo
     {
@@ -3675,7 +3684,7 @@ namespace JadeCore
             float              i_angle;
             ObjectPosSelector& i_selector;
     };
-}                                                           // namespace JadeCore
+}                                                           // namespace Trinity
 */
 
 //===================================================================================================
@@ -3685,8 +3694,8 @@ void WorldObject::GetNearPoint2D(float &x, float &y, float distance2d, float abs
     x = GetPositionX() + (GetObjectSize() + distance2d) * std::cos(absAngle);
     y = GetPositionY() + (GetObjectSize() + distance2d) * std::sin(absAngle);
 
-    JadeCore::NormalizeMapCoord(x);
-    JadeCore::NormalizeMapCoord(y);
+    Trinity::NormalizeMapCoord(x);
+    Trinity::NormalizeMapCoord(y);
 }
 
 void WorldObject::GetNearPoint(WorldObject const* /*p_Searcher*/, float &p_InOutX, float &p_InOutY, float &p_InOutZ, float p_SearcherSize, float p_Distance2D, float p_AbsAngle) const
@@ -3777,9 +3786,9 @@ void WorldObject::MovePosition(Position &pos, float dist, float angle)
     desty = pos.m_positionY + dist * std::sin(angle);
 
     // Prevent invalid coordinates here, position is unchanged
-    if (!JadeCore::IsValidMapCoord(destx, desty, pos.m_positionZ))
+    if (!Trinity::IsValidMapCoord(destx, desty, pos.m_positionZ))
     {
-        sLog->outFatal(LOG_FILTER_GENERAL, "WorldObject::MovePosition invalid coordinates X: %f and Y: %f were passed!", destx, desty);
+        TC_LOG_FATAL("misc", "WorldObject::MovePosition invalid coordinates X: %f and Y: %f were passed!", destx, desty);
         return;
     }
 
@@ -3808,8 +3817,8 @@ void WorldObject::MovePosition(Position &pos, float dist, float angle)
         }
     }
 
-    JadeCore::NormalizeMapCoord(pos.m_positionX);
-    JadeCore::NormalizeMapCoord(pos.m_positionY);
+    Trinity::NormalizeMapCoord(pos.m_positionX);
+    Trinity::NormalizeMapCoord(pos.m_positionY);
     UpdateGroundPositionZ(pos.m_positionX, pos.m_positionY, pos.m_positionZ);
     pos.SetOrientation(GetOrientation());
 }
@@ -3824,9 +3833,9 @@ void WorldObject::MovePositionToFirstCollision(Position &pos, float dist, float 
     desty = pos.m_positionY + dist * std::sin(angle);
 
     // Prevent invalid coordinates here, position is unchanged
-    if (!JadeCore::IsValidMapCoord(destx, desty))
+    if (!Trinity::IsValidMapCoord(destx, desty))
     {
-        sLog->outFatal(LOG_FILTER_GENERAL, "WorldObject::MovePositionToFirstCollision invalid coordinates X: %f and Y: %f were passed!", destx, desty);
+        TC_LOG_FATAL("misc", "WorldObject::MovePositionToFirstCollision invalid coordinates X: %f and Y: %f were passed!", destx, desty);
         return;
     }
 
@@ -3888,8 +3897,8 @@ void WorldObject::MovePositionToFirstCollision(Position &pos, float dist, float 
         }
     }
 
-    JadeCore::NormalizeMapCoord(pos.m_positionX);
-    JadeCore::NormalizeMapCoord(pos.m_positionY);
+    Trinity::NormalizeMapCoord(pos.m_positionX);
+    Trinity::NormalizeMapCoord(pos.m_positionY);
     UpdateAllowedPositionZ(pos.m_positionX, pos.m_positionY, pos.m_positionZ);
     pos.SetOrientation(GetOrientation());
 
@@ -3910,9 +3919,9 @@ void WorldObject::MovePositionToCollisionBetween(Position &pos, float distMin, f
     desty = pos.m_positionY + distMax * std::sin(angle);
 
     // Prevent invalid coordinates here, position is unchanged
-    if (!JadeCore::IsValidMapCoord(destx, desty))
+    if (!Trinity::IsValidMapCoord(destx, desty))
     {
-        sLog->outFatal(LOG_FILTER_GENERAL, "WorldObject::MovePositionToFirstCollision invalid coordinates X: %f and Y: %f were passed!", destx, desty);
+        TC_LOG_FATAL("misc", "WorldObject::MovePositionToFirstCollision invalid coordinates X: %f and Y: %f were passed!", destx, desty);
         return;
     }
 
@@ -3963,8 +3972,8 @@ void WorldObject::MovePositionToCollisionBetween(Position &pos, float distMin, f
         }
     }
 
-    JadeCore::NormalizeMapCoord(pos.m_positionX);
-    JadeCore::NormalizeMapCoord(pos.m_positionY);
+    Trinity::NormalizeMapCoord(pos.m_positionX);
+    Trinity::NormalizeMapCoord(pos.m_positionY);
     UpdateAllowedPositionZ(pos.m_positionX, pos.m_positionY, pos.m_positionZ);
     pos.SetOrientation(GetOrientation());
 }
@@ -4015,8 +4024,8 @@ void WorldObject::DestroyForNearbyPlayers()
         return;
 
     std::list<Player*> targets;
-    JadeCore::AnyPlayerInObjectRangeCheck check(this, GetVisibilityRange(), false);
-    JadeCore::PlayerListSearcher<JadeCore::AnyPlayerInObjectRangeCheck> searcher(this, targets, check);
+    Trinity::AnyPlayerInObjectRangeCheck check(this, GetVisibilityRange(), false);
+    Trinity::PlayerListSearcher<Trinity::AnyPlayerInObjectRangeCheck> searcher(this, targets, check);
     VisitNearbyWorldObject(GetVisibilityRange(), searcher);
     for (std::list<Player*>::const_iterator iter = targets.begin(); iter != targets.end(); ++iter)
     {
@@ -4040,7 +4049,7 @@ void WorldObject::DestroyForNearbyPlayers()
 void WorldObject::UpdateObjectVisibility(bool /*forced*/)
 {
     //updates object's visibility for nearby players
-    JadeCore::VisibleChangesNotifier notifier(*this);
+    Trinity::VisibleChangesNotifier notifier(*this);
     VisitNearbyWorldObject(GetVisibilityRange(), notifier);
 }
 
@@ -4124,7 +4133,7 @@ void WorldObject::BuildUpdate(UpdateDataMapType& data_map)
     }
     else
     {
-        CellCoord p = JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY());
+        CellCoord p = Trinity::ComputeCellCoord(GetPositionX(), GetPositionY());
         Cell cell(p);
         cell.SetNoCreate();
         WorldObjectChangeAccumulator notifier(*this, data_map);
@@ -4161,7 +4170,7 @@ void WorldObject::SetAIAnimKitId(uint16 p_AnimKitID, bool p_Packet /*= true*/)
 
     if (p_Packet)
     {
-        WorldPacket l_Data(Opcodes::SMSG_SET_AI_ANIM_KIT, 16 + 2 + 2);
+        WorldPacket l_Data(SMSG_SET_AI_ANIM_KIT, 16 + 2 + 2);
         l_Data.appendPackGUID(GetGUID());
         l_Data << uint16(p_AnimKitID);
         SendMessageToSet(&l_Data, true);
@@ -4204,7 +4213,7 @@ void WorldObject::SetMeleeAnimKitId(uint16 p_AnimKitID)
 
 void WorldObject::SetAnimTier(uint32 p_Tier)
 {
-    WorldPacket l_Data(Opcodes::SMSG_SET_ANIM_TIER);
+    WorldPacket l_Data(SMSG_SET_ANIM_TIER);
     l_Data.appendPackGUID(GetGUID());
     l_Data << int32(p_Tier);
     SendMessageToSet(&l_Data, true);
@@ -4212,7 +4221,7 @@ void WorldObject::SetAnimTier(uint32 p_Tier)
 
 void WorldObject::SetPlayerHoverAnim(bool p_Apply)
 {
-    WorldPacket l_Data(Opcodes::SMSG_SET_ANIM_TIER);
+    WorldPacket l_Data(SMSG_SET_ANIM_TIER);
     l_Data.appendPackGUID(GetGUID());
     l_Data.WriteBit(p_Apply);
     l_Data.FlushBits();

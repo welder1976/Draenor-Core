@@ -38,12 +38,13 @@
 #include "Common.h"
 #include "KillRewarder.h"
 #include "TradeData.h"
+#include "Opcodes.h"
 
 // for template
 #include "SpellMgr.h"
-#include <ace/Stack_Trace.h>
 #include <chrono>
 #include <deque>
+#include <map>
 
 struct Mail;
 struct ItemExtendedCostEntry;
@@ -51,6 +52,7 @@ class Channel;
 class Creature;
 class DynamicObject;
 class Group;
+class LootLockoutMap;
 #ifndef CROSS
 class Guild;
 #else /* CROSS */
@@ -64,6 +66,7 @@ class SpellCastTargets;
 class UpdateMask;
 class PhaseMgr;
 class SceneObject;
+
 
 namespace CUF
 {
@@ -237,9 +240,9 @@ struct PlayerCurrency
 };
 
 typedef std::map<uint32, PlayerTalent*> PlayerTalentMap;
-typedef ACE_Based::LockedMap<uint32, PlayerSpell*> PlayerSpellMap;
+typedef std::map<uint32, PlayerSpell*> PlayerSpellMap;
 typedef std::list<SpellModifier*> SpellModList;
-typedef ACE_Based::LockedMap<uint32, PlayerCurrency> PlayerCurrenciesMap;
+typedef std::map<uint32, PlayerCurrency> PlayerCurrenciesMap;
 
 typedef std::list<uint64> WhisperListContainer;
 
@@ -250,7 +253,18 @@ struct SpellCooldown
 };
 
 typedef std::map<uint32, SpellCooldown> SpellCooldowns;
-typedef ACE_Based::LockedMap<uint32 /*instanceId*/, time_t/*releaseTime*/> InstanceTimeMap;
+typedef std::map<uint32 /*instanceId*/, time_t/*releaseTime*/> InstanceTimeMap;
+
+enum class LootLockoutType
+{
+    PersonalLoot = 0,    // World bosses + Lfr + flex 
+    BonusLoot = 1,    // Per boss per week per difficult. Actually normal/heroic 10/25 must be one, but since we have all 4 difficulties as separate lockouts for normal loot...
+    MoguSeals = 2,    // Per boss per week. First quest for legendary cloak
+    SecretOfTheEmpire = 3,    // Per boss per week. Second quest for legendary cloak
+    TitanRunestone = 4,    // Per boss per week. Third quest for legendary cloak
+    HeirloomWeapon = 5,    // One boss (Garrosh) per week per difficulty
+    Max
+};
 
 enum TrainerSpellState
 {
@@ -752,7 +766,7 @@ struct SkillStatusData
     SkillUpdateState uState;
 };
 
-typedef ACE_Based::LockedMap<uint32, SkillStatusData> SkillStatusMap;
+typedef std::map<uint32, SkillStatusData> SkillStatusMap;
 
 class Quest;
 class Spell;
@@ -867,6 +881,11 @@ struct EquipmentSet
 #define MAX_EQUIPMENT_SET_INDEX 10                          // client limit
 
 typedef std::map<uint32, EquipmentSet> EquipmentSets;
+
+struct EquipmentSetInfo
+{
+    using EquipmentSetData = EquipmentSet;
+};
 
 struct ItemPosCount
 {
@@ -1529,6 +1548,13 @@ namespace InteractionStatus
     };
 }
 
+enum class GroupSlot : uint8
+{
+    Original,       // LE_PARTY_CATEGORY_HOME       (home i.e. home realm only)
+    Instance,       // LE_PARTY_CATEGORY_INSTANCE
+    Max,
+};
+
 class Player : public Unit, public GridObject<Player>
 {
     friend class WorldSession;
@@ -1607,6 +1633,7 @@ class Player : public Unit, public GridObject<Player>
         bool isAFK() const { return HasFlag(PLAYER_FIELD_PLAYER_FLAGS, PLAYER_FLAGS_AFK); }
         bool isDND() const { return HasFlag(PLAYER_FIELD_PLAYER_FLAGS, PLAYER_FLAGS_DND); }
         uint8 GetChatTag() const;
+        uint8 GetChatFlags() const { return GetChatTag(); }
         std::string afkMsg;
         std::string dndMsg;
 
@@ -2096,6 +2123,10 @@ class Player : public Unit, public GridObject<Player>
         void AddTimedQuest(uint32 quest_id) { m_timedquests.insert(quest_id); }
         void RemoveTimedQuest(uint32 quest_id) { m_timedquests.erase(quest_id); }
 
+        void SendMusic(uint32 musicId, uint64 source);
+        void SendSound(uint32 soundId, uint64 source);
+        void SendSoundToAll(uint32 soundId, uint64 source);
+
         /*********************************************************/
         /***                   LOAD SYSTEM                     ***/
         /*********************************************************/
@@ -2218,6 +2249,12 @@ class Player : public Unit, public GridObject<Player>
         bool RemoveMItem(uint32 id)
         {
             return mMitems.erase(id) ? true : false;
+        }
+
+        void SendOnCancelExpectedVehicleRideAura()
+        {
+            WorldPacket data(SMSG_ON_CANCEL_EXPECTED_RIDE_VEHICLE_AURA, 0);
+            GetSession()->SendPacket(&data);
         }
 
         void PetSpellInitialize();
@@ -2364,7 +2401,7 @@ class Player : public Unit, public GridObject<Player>
         {
             SpellCooldowns::const_iterator itr = m_spellCooldowns.find(spell_id);
             uint64 currTime = 0;
-            ACE_OS::gettimeofday().msec(currTime);
+            currTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
             return uint32(itr != m_spellCooldowns.end() && itr->second.end > currTime ? itr->second.end - currTime : 0);
         }
         void AddSpellAndCategoryCooldowns(SpellInfo const* spellInfo, uint32 itemId, Spell* spell = NULL, bool infinityCooldown = false);
@@ -2520,7 +2557,6 @@ class Player : public Unit, public GridObject<Player>
         uint32 GetSeasonGames(uint8 slot) const { ASSERT(slot < MAX_PVP_SLOT); return m_SeasonGames[slot]; }
         uint32 GetArenaMatchMakerRating(uint8 slot) const { ASSERT(slot < MAX_PVP_SLOT); return m_ArenaMatchMakerRating[slot]; }
 
-#ifdef CROSS
         void InitArenaPersonalRating(uint8 slot, uint32 value) { ASSERT(slot < MAX_PVP_SLOT); m_ArenaPersonalRating[slot] = value; }
         void InitBestRatingOfWeek(uint8 slot, uint32 value) { ASSERT(slot < MAX_PVP_SLOT); m_BestRatingOfWeek[slot] = value; }
         void InitBestRatingOfSeason(uint8 slot, uint32 value) { ASSERT(slot < MAX_PVP_SLOT); m_BestRatingOfSeason[slot] = value; }
@@ -2531,7 +2567,6 @@ class Player : public Unit, public GridObject<Player>
         void InitSeasonGames(uint8 slot, uint32 value) { ASSERT(slot < MAX_PVP_SLOT); m_SeasonGames[slot] = value; }
         void InitArenaMatchMakerRating(uint8 slot, uint32 value) { ASSERT(slot < MAX_PVP_SLOT); m_ArenaMatchMakerRating[slot] = value; }
 
-#endif /* CROSS */
         uint32 GetMaxRating() const
         {
             uint32 max_value = 0;
@@ -2550,11 +2585,13 @@ class Player : public Unit, public GridObject<Player>
 
             if (p_Value > 3500)
             {
-                ACE_Stack_Trace trace;
-                sLog->outError(LOG_FILTER_GENERAL, "Suspiciously high personal rating. Rating: %u, Slot: %u, Player: %u, Trace log: %s", p_Value, p_Slot, GUID_LOPART(GetGUID()), trace.c_str());
+                // Stack trace removed - ACE dependency
+                TC_LOG_ERROR("server.worldserver", "Suspiciously high personal rating. Rating: %u, Slot: %u, Player: %u", p_Value, p_Slot, GUID_LOPART(GetGUID()));
             }
 
-            UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_HIGHEST_PERSONAL_RATING, p_Value, Arena::GetTypeBySlot(p_Slot));
+            // Slots 3+ are RBG/PvP, not arena team types — GetTypeBySlot only knows 0..2.
+            if (p_Slot < MAX_ARENA_SLOT)
+                UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_HIGHEST_PERSONAL_RATING, p_Value, Arena::GetTypeBySlot(p_Slot));
 
             m_ArenaPersonalRating[p_Slot] = p_Value;
             if (m_BestRatingOfWeek[p_Slot] < p_Value)
@@ -2570,8 +2607,8 @@ class Player : public Unit, public GridObject<Player>
 
             if (value > 3500)
             {
-                ACE_Stack_Trace trace;
-                sLog->outError(LOG_FILTER_GENERAL, "Suspiciously high match maker rating. Rating: %u, Slot: %u, Player: %u, Trace log: %s", value, slot, GUID_LOPART(GetGUID()), trace.c_str());
+                // Stack trace removed - ACE dependency
+                TC_LOG_ERROR("server.worldserver", "Suspiciously high match maker rating. Rating: %u, Slot: %u, Player: %u", value, slot, GUID_LOPART(GetGUID()));
             }
 
             m_ArenaMatchMakerRating[slot] = value;
@@ -2701,6 +2738,11 @@ class Player : public Unit, public GridObject<Player>
         void IncreaseBonusRollFails() { ++m_BonusRollFails; }
         void ResetBonusRollFails() { m_BonusRollFails = 0; }
 
+        bool HasLfrLockout(uint32 bossEntry) const { return HasLootLockout(LootLockoutType::PersonalLoot, bossEntry, RAID_DIFFICULTY_25MAN_LFR); }
+        bool HasLootLockout(LootLockoutType type, uint32 lootedObjectEntry, Difficulty difficulty, bool checkPending = false) const;
+        void AddLootLockout(LootLockoutType type, uint32 lootedObjectEntry, Difficulty difficulty, bool pending = true);
+        void ClearLootLockouts();
+
         void RemovedInsignia(Player* looterPlr);
 
         WorldSession* GetSession() const { return m_session; }
@@ -2792,6 +2834,10 @@ class Player : public Unit, public GridObject<Player>
         void SetSemaphoreTeleportNear(bool semphsetting) { mSemaphoreTeleport_Near = semphsetting; }
         void SetSemaphoreTeleportFar(bool semphsetting) { mSemaphoreTeleport_Far = semphsetting; }
         void ProcessDelayedOperations();
+
+        bool IsForcedTeleportFar() { return m_forcedTeleportFar; }
+        void SetForcedTeleportFar(bool forced) { m_forcedTeleportFar = forced; if (forced) SetrSemaphoreTeleportForcedFar(true); }
+        void SetrSemaphoreTeleportForcedFar(bool val) { m_forcedTeleportFarSemaphore = val; }
 
         void CheckAreaExploreAndOutdoor(void);
         bool m_IsOutdoors;
@@ -3248,7 +3294,8 @@ class Player : public Unit, public GridObject<Player>
 
         static void RemoveAtLoginFlagFromDB(uint32 p_Guid, AtLoginFlags p_Flags);
 
-        bool isUsingLfg();
+        bool IsUsingLfg(bool inProgressOnly = false);
+        bool inRandomLfgDungeon();
 
         typedef std::set<uint32> DFQuestsDoneList;
         DFQuestsDoneList m_DFQuests;
@@ -3282,7 +3329,7 @@ class Player : public Unit, public GridObject<Player>
         uint32 m_HomebindTimer;
         bool m_InstanceValid;
         // permanent binds and solo binds by difficulty
-        BoundInstancesMap m_boundInstances[Difficulty::MaxDifficulties];
+        BoundInstancesMap m_boundInstances[Difficulty::MAX_DIFFICULTY];
         InstancePlayerBind* GetBoundInstance(uint32 mapId, Difficulty difficulty);
         BoundInstancesMap& GetBoundInstances(Difficulty difficulty) { return m_boundInstances[difficulty]; }
         InstanceSave* GetInstanceSave(uint32 mapid);
@@ -3322,6 +3369,11 @@ class Player : public Unit, public GridObject<Player>
         void SetGroupInvite(uint32 groupGUID) { m_groupInviteGUID = groupGUID; }
         Group* GetGroup() { return m_group.getTarget(); }
         const Group* GetGroup() const { return (const Group*)m_group.getTarget(); }
+        Group* GetGroup(GroupSlot slot)
+        {
+            ASSERT(slot < GroupSlot::Max);
+            return m_group.getTarget();
+        }
         GroupReference& GetGroupRef() { return m_group; }
         void SetGroup(Group* group, int8 subgroup = -1);
         uint8 GetSubGroup() const { return m_group.getSubGroup(); }
@@ -3414,6 +3466,7 @@ class Player : public Unit, public GridObject<Player>
         uint32 GetAverageItemLevelTotal() const;
         uint32 GetAverageItemLevelTotalWithOrWithoutPvPBonus(bool p_PvP) const;
         bool isDebugAreaTriggers;
+        float GetAverageItemLevel();
         bool m_IsDebugQuestLogs;
 
         void ClearWhisperWhiteList() { WhisperList.clear(); }
@@ -3588,6 +3641,7 @@ class Player : public Unit, public GridObject<Player>
             pvpInfo.inFFAPvPArea = false;
         }
 
+        void ReadyCheckComplete();
         uint32 GetQuestObjectiveCounter(uint32 objectiveId) const;
 
         //////////////////////////////////////////////////////////////////////////
@@ -3611,7 +3665,7 @@ class Player : public Unit, public GridObject<Player>
             auto l_Itr = m_CategoryCharges.find(p_ChargeCategoryEntry->Id);
             if (l_Itr != m_CategoryCharges.end())
             {
-                WorldPacket l_Data(Opcodes::SMSG_CLEAR_SPELL_CHARGES);
+                WorldPacket l_Data(SMSG_CLEAR_SPELL_CHARGES);
                 l_Data << int32(p_ChargeCategoryEntry->Id);
                 l_Data.WriteBit(false); ///< IsPet
                 l_Data.FlushBits();
@@ -3636,6 +3690,8 @@ class Player : public Unit, public GridObject<Player>
         CompletedChallenge* GetCompletedChallenge(uint32 p_MapID);
         void AddCompletedChallenge(uint32 p_MapID, CompletedChallenge p_Challenge);
 
+
+        std::unique_ptr<LootLockoutMap> m_lootLockouts;
         CompletedChallengesMap m_CompletedChallenges;
         //////////////////////////////////////////////////////////////////////////
 
@@ -3697,9 +3753,8 @@ class Player : public Unit, public GridObject<Player>
 
         void AddCriticalOperation(std::function<bool()> const&& p_Function)
         {
-            m_CriticalOperationLock.acquire();
+            std::lock_guard<std::mutex> lock(m_CriticalOperationLock);
             m_CriticalOperation.push(std::function<bool()>(p_Function));
-            m_CriticalOperationLock.release();
         }
 
         static void HandleFactionChangeActions(char const* p_KnownTitle, uint64 p_PlayerGUID, uint8 p_Race, bool p_AtFactionChange);
@@ -4182,7 +4237,7 @@ class Player : public Unit, public GridObject<Player>
         DailyQuestList m_dailyQuestStorage;
 
         std::queue<std::function<bool()>> m_CriticalOperation;
-        ACE_Thread_Mutex m_CriticalOperationLock;
+        std::mutex m_CriticalOperationLock;
 
         uint64 m_BeaconOfFaithTargetGUID;
 
@@ -4202,7 +4257,7 @@ class Player : public Unit, public GridObject<Player>
         // know currencies are not removed at any point (0 displayed)
         void AddKnownCurrency(uint32 itemId);
 
-        int32 CalculateReputationGain(ReputationSource source, uint32 creatureOrQuestLevel, int32 rep, int32 faction, bool noQuestBonus = false);
+        float CalculateReputationGain(ReputationSource source, uint32 creatureOrQuestLevel, int32 rep, int32 faction, bool noQuestBonus = false);
         void AdjustQuestReqItemCount(Quest const* quest);
 
         bool IsCanDelayTeleport() const { return m_bCanDelayTeleport; }
@@ -4228,6 +4283,9 @@ class Player : public Unit, public GridObject<Player>
 		uint32 m_teleport_option_param;
         bool mSemaphoreTeleport_Near;
         bool mSemaphoreTeleport_Far;
+
+        bool m_forcedTeleportFar;
+        bool m_forcedTeleportFarSemaphore = false;
 
         uint32 m_DelayedOperations;
         bool m_bCanDelayTeleport;
@@ -4261,6 +4319,9 @@ class Player : public Unit, public GridObject<Player>
 
         uint32 _lastTargetedGO;
         float m_PersonnalXpRate;
+
+
+        uint32 _readyCheckTimer;
 
         //////////////////////////////////////////////////////////////////////////
         /// Garrison

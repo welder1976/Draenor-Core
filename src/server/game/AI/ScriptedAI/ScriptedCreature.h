@@ -18,6 +18,9 @@
 #define CAST_PLR(a)     (dynamic_cast<Player*>(a))
 #define CAST_CRE(a)     (dynamic_cast<Creature*>(a))
 #define CAST_AI(a, b)   (dynamic_cast<a*>(b))
+#define MAX_AGGRO_PULSE_TIMER            5000
+
+#define GET_SPELL(a)    (const_cast<SpellInfo*>(sSpellMgr->GetSpellInfo(a)))
 
 class InstanceScript;
 
@@ -34,7 +37,7 @@ class SummonList : public std::list<uint64>
         {
             // We need to use a copy of SummonList here, otherwise original SummonList would be modified
             std::list<uint64> listCopy = *this;
-            JadeCore::Containers::RandomResizeList<uint64, Predicate>(listCopy, predicate, max);
+            Trinity::Containers::RandomResizeList<uint64, Predicate>(listCopy, predicate, max);
             for (iterator i = listCopy.begin(); i != listCopy.end(); )
             {
                 Creature* summon = Unit::GetCreature(*me, *i++);
@@ -202,8 +205,8 @@ struct ScriptedAI : public CreatureAI
     Difficulty GetDifficulty() const { return _difficulty; }
 
     // return true for 25 man or 25 man heroic mode
-    bool Is25ManRaid() const { return _difficulty == Difficulty::Difficulty25N || _difficulty == Difficulty::Difficulty25HC || IsLFR(); }
-    bool IsLFR() const { return _difficulty == Difficulty::DifficultyRaidTool || _difficulty == Difficulty::DifficultyRaidLFR; }
+    bool Is25ManRaid() const { return _difficulty == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL || _difficulty == Difficulty::RAID_DIFFICULTY_25MAN_HEROIC || IsLFR(); }
+    bool IsLFR() const { return _difficulty == Difficulty::RAID_DIFFICULTY_25MAN_LFR || _difficulty == Difficulty::DifficultyRaidLFR; }
     bool IsHeroic() const { return me->GetMap()->IsHeroic(); }
     bool IsMythic() const { return me->GetMap()->IsMythic(); }
 
@@ -212,9 +215,9 @@ struct ScriptedAI : public CreatureAI
     {
         switch (_difficulty)
         {
-            case DifficultyNormal:
+            case DUNGEON_DIFFICULTY_NORMAL:
                 return normal5;
-            case DifficultyHeroic:
+            case DUNGEON_DIFFICULTY_HEROIC:
                 return heroic10;
             default:
                 break;
@@ -228,9 +231,9 @@ struct ScriptedAI : public CreatureAI
     {
         switch (_difficulty)
         {
-            case Difficulty10N:
+            case RAID_DIFFICULTY_10MAN_NORMAL:
                 return normal10;
-            case Difficulty25N:
+            case RAID_DIFFICULTY_25MAN_NORMAL:
                 return normal25;
             default:
                 break;
@@ -244,13 +247,13 @@ struct ScriptedAI : public CreatureAI
     {
         switch (_difficulty)
         {
-            case Difficulty10N:
+            case RAID_DIFFICULTY_10MAN_NORMAL:
                 return normal10;
-            case Difficulty25N:
+            case RAID_DIFFICULTY_25MAN_NORMAL:
                 return normal25;
-            case Difficulty10HC:
+            case RAID_DIFFICULTY_10MAN_HEROIC:
                 return heroic10;
-            case Difficulty25HC:
+            case RAID_DIFFICULTY_25MAN_HEROIC:
                 return heroic25;
             default:
                 break;
@@ -336,6 +339,25 @@ class BossAI : public ScriptedAI
             return false;
         }
 
+        bool CheckInArea(const uint32 diff, uint32 areaId)
+        {
+            if (_checkareaTimer <= diff)
+                _checkareaTimer = 3000;
+            else
+            {
+                _checkareaTimer -= diff;
+                return true;
+            }
+
+            if (me->GetAreaId() != areaId)
+            {
+                EnterEvadeMode();
+                return false;
+            }
+
+            return true;
+        }
+
         bool CheckBoundary(Unit* who);
         void TeleportCheaters();
 
@@ -345,6 +367,7 @@ class BossAI : public ScriptedAI
     private:
         BossBoundaryMap const* const _boundary;
         uint32 const _bossId;
+        uint32 _checkareaTimer;
 };
 
 class WorldBossAI : public ScriptedAI

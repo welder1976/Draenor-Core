@@ -343,7 +343,7 @@ class boss_dark_animus : public CreatureScript
                     /// Should always be true, just prevent potential crash
                     if (l_AnimaGolemList.size() > 13)
                     {
-                        JadeCore::RandomResizeList(l_AnimaGolemList, 13);
+                        Trinity::RandomResizeList(l_AnimaGolemList, 13);
                         for (Creature* l_Golem : l_AnimaGolemList)
                         {
                             if (l_Golem)
@@ -364,7 +364,7 @@ class boss_dark_animus : public CreatureScript
                     /// Should always be true, just prevent potential crash
                     if (l_LargeGolemList.size() > 3)
                     {
-                        JadeCore::RandomResizeList(l_LargeGolemList, 3);
+                        Trinity::RandomResizeList(l_LargeGolemList, 3);
                         for (Creature* l_Golem : l_LargeGolemList)
                         {
                             if (l_Golem)
@@ -510,17 +510,9 @@ class boss_dark_animus : public CreatureScript
                             if (l_DungeonID != eMisc::LFRToTThirdPart)
                                 continue;
 
-                            if (!me || l_Player->IsAtGroupRewardDistance(me))
-                                sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
-
                             if (l_Assigned)
                                 continue;
 
-                            if (Group* l_Group = l_Player->GetGroup())
-                            {
-                                l_Assigned = true;
-                                sLFGMgr->AutomaticLootAssignation(me, l_Group);
-                            }
                         }
                     }
                 }
@@ -1713,11 +1705,11 @@ class spell_transfusion_searcher : public SpellScriptLoader
 
                     // In LFR difficulty, a random golem is chosen.
                     if (l_Caster->GetMap()->IsLFR())
-                        JadeCore::RandomResizeList(p_Targets, 1);
+                        Trinity::RandomResizeList(p_Targets, 1);
                     // In other difficulties, the nearest golem is chosen
                     else
                     {
-                        p_Targets.sort(JadeCore::WorldObjectDistanceCompareOrderPred(l_Caster));
+                        p_Targets.sort(Trinity::WorldObjectDistanceCompareOrderPred(l_Caster));
                         WorldObject* l_WorldObject = (*p_Targets.begin());
                         p_Targets.clear();
                         p_Targets.push_back(l_WorldObject);
@@ -1888,12 +1880,12 @@ class spell_matter_swap : public SpellScriptLoader
                 if (p_Targets.empty())
                     return;
 
-                p_Targets.remove_if(JadeCore::UnitAuraCheck(true, SPELL_MATTER_SWAP));
+                p_Targets.remove_if(Trinity::UnitAuraCheck(true, SPELL_MATTER_SWAP));
 
                 if (p_Targets.empty())
                     return;
 
-                JadeCore::RandomResizeList(p_Targets, 1);
+                Trinity::RandomResizeList(p_Targets, 1);
             }
 
             void Register()
@@ -2076,8 +2068,8 @@ class spell_targeted_matter_swap : public SpellScriptLoader
                 if (p_Targets.empty())
                     return;
                 
-                p_Targets.sort(JadeCore::WorldObjectDistanceCompareOrderPred(GetCaster(), true));
-                JadeCore::RandomResizeList(p_Targets, 1);
+                p_Targets.sort(Trinity::WorldObjectDistanceCompareOrderPred(GetCaster(), true));
+                Trinity::RandomResizeList(p_Targets, 1);
             }
 
             void Register()
@@ -2250,7 +2242,7 @@ class spell_touch_of_the_animus : public SpellScriptLoader
                 if (p_Targets.empty())
                     return;
 
-                JadeCore::RandomResizeList(p_Targets, 1);
+                Trinity::RandomResizeList(p_Targets, 1);
             }
 
             void Register()
@@ -2280,7 +2272,7 @@ class spell_anima_font : public SpellScriptLoader
                 if (p_Targets.empty())
                     return;
 
-                JadeCore::RandomResizeList(p_Targets, 1);
+                Trinity::RandomResizeList(p_Targets, 1);
             }
 
             void Register()
@@ -2310,7 +2302,7 @@ class spell_anima_font_dummy : public SpellScriptLoader
                 if (p_Targets.empty())
                     return;
 
-                JadeCore::RandomResizeList(p_Targets, 1);
+                Trinity::RandomResizeList(p_Targets, 1);
             }
 
             void HandleDummy(SpellEffIndex /*p_EffIndex*/)
@@ -2404,7 +2396,7 @@ class spell_empower_golem : public SpellScriptLoader
                 for (WorldObject* l_Object : p_Targets)
                     l_TempList.push_back(l_Object->ToUnit());
 
-                l_TempList.sort(JadeCore::HealthPctOrderPred());
+                l_TempList.sort(Trinity::HealthPctOrderPred());
                 WorldObject* l_Object = (*l_TempList.begin());
                 p_Targets.clear();
                 p_Targets.push_back(l_Object);
@@ -2436,8 +2428,8 @@ class at_anima_ring : public AreaTriggerEntityScript
             std::list<Unit*> l_TargetList;
             float l_Radius = 0.9f;
 
-            JadeCore::NearestAttackableUnitInObjectRangeCheck l_Check(p_AreaTrigger, l_Caster, l_Radius);
-            JadeCore::UnitListSearcher<JadeCore::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, l_Check);
+            Trinity::NearestAttackableUnitInObjectRangeCheck l_Check(p_AreaTrigger, l_Caster, l_Radius);
+            Trinity::UnitListSearcher<Trinity::NearestAttackableUnitInObjectRangeCheck> l_Searcher(p_AreaTrigger, l_TargetList, l_Check);
             p_AreaTrigger->VisitNearbyObject(l_Radius, l_Searcher);
 
             for (Unit* l_Unit : l_TargetList)

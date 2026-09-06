@@ -88,7 +88,7 @@ void WorldSession::HandleLootItemOpcode(WorldPacket & p_RecvData)
         {
             Creature* l_Creature = GetPlayer()->GetMap()->GetCreature(l_LootGuid);
 
-            bool l_IsLootAllowed = l_Creature && l_Creature->isAlive() == (m_Player->getClass() == CLASS_ROGUE && l_Creature->lootForPickPocketed);
+            bool l_IsLootAllowed = l_Creature && l_Creature->isAlive() == (m_Player->getClass() == CLASS_ROGUE && l_Creature->loot.loot_type == LOOT_PICKPOCKETING);
 
             /// Check for Glyph of Fetch too
             if (!l_IsLootAllowed || (!l_Creature->IsWithinDistInMap(m_Player, 40.0f) && !m_Player->HasSpell(125050)))
@@ -171,7 +171,7 @@ void WorldSession::HandleLootMoneyOpcode(WorldPacket& /*recvData*/)
         case HIGHGUID_VEHICLE:
         {
             Creature* creature = player->GetMap()->GetCreature(guid);
-            bool lootAllowed = creature && creature->isAlive() == (player->getClass() == CLASS_ROGUE && creature->lootForPickPocketed);
+            bool lootAllowed = creature && creature->isAlive() == (player->getClass() == CLASS_ROGUE && creature->loot.loot_type == LOOT_PICKPOCKETING);
 
             /// Check for Glyph of Fetch too
             if (lootAllowed && (creature->IsWithinDistInMap(player, INTERACTION_DISTANCE) || m_Player->HasSpell(125050)))
@@ -183,13 +183,13 @@ void WorldSession::HandleLootMoneyOpcode(WorldPacket& /*recvData*/)
                 else
                 {
                     std::list<Creature*> linkedLootCreatures;
-                    CellCoord p(JadeCore::ComputeCellCoord(player->GetPositionX(), player->GetPositionY()));
+                    CellCoord p(Trinity::ComputeCellCoord(player->GetPositionX(), player->GetPositionY()));
                     Cell cell(p);
                     cell.SetNoCreate();
 
-                    JadeCore::AllDeadCreaturesInRange check(player, 25.0f, creature->GetGUID());
-                    JadeCore::CreatureListSearcher<JadeCore::AllDeadCreaturesInRange> searcher(player, linkedLootCreatures, check);
-                    TypeContainerVisitor<JadeCore::CreatureListSearcher<JadeCore::AllDeadCreaturesInRange>, GridTypeMapContainer> cSearcher(searcher);
+                    Trinity::AllDeadCreaturesInRange check(player, 25.0f, creature->GetGUID());
+                    Trinity::CreatureListSearcher<Trinity::AllDeadCreaturesInRange> searcher(player, linkedLootCreatures, check);
+                    TypeContainerVisitor<Trinity::CreatureListSearcher<Trinity::AllDeadCreaturesInRange>, GridTypeMapContainer> cSearcher(searcher);
                     cell.Visit(p, cSearcher, *(player->GetMap()), *player,  25.0f);
 
                     for (auto itr : linkedLootCreatures)
@@ -451,7 +451,7 @@ void WorldSession::DoLootRelease(uint64 lguid)
     {
         Creature* creature = GetPlayer()->GetMap()->GetCreature(lguid);
 
-        bool lootAllowed = creature && creature->isAlive() == (player->getClass() == CLASS_ROGUE && creature->lootForPickPocketed);
+        bool lootAllowed = creature && creature->isAlive() == (player->getClass() == CLASS_ROGUE && creature->loot.loot_type == LOOT_PICKPOCKETING);
 
         /// Check for Glyph of Fetch too
         if (!lootAllowed || (!creature->IsWithinDistInMap(m_Player, INTERACTION_DISTANCE) && !m_Player->HasSpell(125050)))
@@ -460,11 +460,12 @@ void WorldSession::DoLootRelease(uint64 lguid)
         loot = &creature->loot;
         if (loot->isLooted())
         {
+            creature->RemoveFlag(OBJECT_FIELD_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE);
+
             // skip pickpocketing loot for speed, skinning timer reduction is no-op in fact
             if (!creature->isAlive())
                 creature->AllLootRemovedFromCorpse();
 
-            creature->RemoveFlag(OBJECT_FIELD_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE);
             loot->clear();
 
             // Clear all linkedLoot looted
@@ -568,7 +569,7 @@ void WorldSession::HandleDoMasterLootRollOpcode(WorldPacket & p_Packet)
 
     if (l_LootListID >= l_Loot->Items.size() + l_Loot->QuestItems.size())
     {
-        sLog->outDebug(LOG_FILTER_LOOT, "MasterLootItem: Player %s might be using a hack! (slot %d, size %lu)", GetPlayer()->GetName(), l_LootListID, (unsigned long)l_Loot->Items.size());
+        TC_LOG_DEBUG("loot", "MasterLootItem: Player %s might be using a hack! (slot %d, size %lu)", GetPlayer()->GetName(), l_LootListID, (unsigned long)l_Loot->Items.size());
         return;
     }
 
@@ -653,7 +654,7 @@ void WorldSession::HandleMasterLootItemOpcode(WorldPacket & p_Packet)
 
         if (l_SlotID >= l_Loot->Items.size() + l_Loot->QuestItems.size())
         {
-            sLog->outDebug(LOG_FILTER_LOOT, "MasterLootItem: Player %s might be using a hack! (slot %d, size %lu)", GetPlayer()->GetName(), l_SlotID, (unsigned long)l_Loot->Items.size());
+            TC_LOG_DEBUG("loot", "MasterLootItem: Player %s might be using a hack! (slot %d, size %lu)", GetPlayer()->GetName(), l_SlotID, (unsigned long)l_Loot->Items.size());
             return;
         }
 

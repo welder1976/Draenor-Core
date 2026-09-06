@@ -467,23 +467,23 @@ void SpellCastTargets::Update(Unit* p_Caster)
 void SpellCastTargets::OutDebug() const
 {
     if (!m_targetMask)
-        sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "No targets");
+        TC_LOG_INFO("spells", "No targets");
 
-    sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "target mask: %u", m_targetMask);
+    TC_LOG_INFO("spells", "target mask: %u", m_targetMask);
     if (m_targetMask & (TARGET_FLAG_UNIT_MASK | TARGET_FLAG_CORPSE_MASK | TARGET_FLAG_GAMEOBJECT_MASK))
-        sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "Object target: " UI64FMTD, m_objectTargetGUID);
+        TC_LOG_INFO("spells", "Object target: " UI64FMTD, m_objectTargetGUID);
     if (m_targetMask & TARGET_FLAG_ITEM)
-        sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "Item target: " UI64FMTD, m_itemTargetGUID);
+        TC_LOG_INFO("spells", "Item target: " UI64FMTD, m_itemTargetGUID);
     if (m_targetMask & TARGET_FLAG_TRADE_ITEM)
-        sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "Trade item target: " UI64FMTD, m_itemTargetGUID);
+        TC_LOG_INFO("spells", "Trade item target: " UI64FMTD, m_itemTargetGUID);
     if (m_targetMask & TARGET_FLAG_SOURCE_LOCATION)
-        sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "Source location: transport guid:" UI64FMTD " trans offset: %s position: %s", m_src._transportGUID, m_src._transportOffset.ToString().c_str(), m_src._position.ToString().c_str());
+        TC_LOG_INFO("spells", "Source location: transport guid:" UI64FMTD " trans offset: %s position: %s", m_src._transportGUID, m_src._transportOffset.ToString().c_str(), m_src._position.ToString().c_str());
     if (m_targetMask & TARGET_FLAG_DEST_LOCATION)
-        sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "Destination location: transport guid:" UI64FMTD " trans offset: %s position: %s", m_dst._transportGUID, m_dst._transportOffset.ToString().c_str(), m_dst._position.ToString().c_str());
+        TC_LOG_INFO("spells", "Destination location: transport guid:" UI64FMTD " trans offset: %s position: %s", m_dst._transportGUID, m_dst._transportOffset.ToString().c_str(), m_dst._position.ToString().c_str());
     if (m_targetMask & TARGET_FLAG_STRING)
-        sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "String: %s", m_strTarget.c_str());
-    sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "speed: %f", m_speed);
-    sLog->outInfo(LOG_FILTER_SPELLS_AURAS, "elevation: %f", m_elevation);
+        TC_LOG_INFO("spells", "String: %s", m_strTarget.c_str());
+    TC_LOG_INFO("spells", "speed: %f", m_speed);
+    TC_LOG_INFO("spells", "elevation: %f", m_elevation);
 }
 
 SpellValue::SpellValue(SpellInfo const* proto)
@@ -610,7 +610,7 @@ m_caster((info->AttributesEx6 & SPELL_ATTR6_CAST_BY_CHARMER && caster->GetCharme
     m_effectExecuteData.clear();
 
     if (m_caster == NULL)
-        sLog->outAshran("m_caster is null!! spellId %u", m_spellInfo->Id);
+        TC_LOG_ERROR("server.worldserver", "m_caster is null!! spellId %u", m_spellInfo->Id);
 
     for (uint8 i = 0; i < m_spellInfo->EffectCount; ++i)
         m_destTargets[i] = SpellDestination(*m_caster);
@@ -1173,9 +1173,9 @@ void Spell::SelectImplicitConeTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
 
     if (uint32 l_ContainerTypeMask = GetSearcherTypeMask(l_ObjectType, l_ConditionsList))
     {
-        JadeCore::WorldObjectSpellConeTargetCheck l_Check(l_ConeAngle, l_Radius, m_caster, m_spellInfo, l_SelectionType, l_ConditionsList);
-        JadeCore::WorldObjectListSearcher<JadeCore::WorldObjectSpellConeTargetCheck> l_Searcher(m_caster, l_Targets, l_Check, l_ContainerTypeMask);
-        SearchTargets<JadeCore::WorldObjectListSearcher<JadeCore::WorldObjectSpellConeTargetCheck> >(l_Searcher, l_ContainerTypeMask, m_caster, m_caster, l_Radius);
+        Trinity::WorldObjectSpellConeTargetCheck l_Check(l_ConeAngle, l_Radius, m_caster, m_spellInfo, l_SelectionType, l_ConditionsList);
+        Trinity::WorldObjectListSearcher<Trinity::WorldObjectSpellConeTargetCheck> l_Searcher(m_caster, l_Targets, l_Check, l_ContainerTypeMask);
+        SearchTargets<Trinity::WorldObjectListSearcher<Trinity::WorldObjectSpellConeTargetCheck> >(l_Searcher, l_ContainerTypeMask, m_caster, m_caster, l_Radius);
 
         CallScriptObjectAreaTargetSelectHandlers(l_Targets, p_EffIndex);
 
@@ -1183,7 +1183,7 @@ void Spell::SelectImplicitConeTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
         {
             // Other special target selection goes here
             if (uint32 l_MaxTargets = m_spellValue->MaxAffectedTargets)
-                JadeCore::Containers::RandomResizeList(l_Targets, l_MaxTargets);
+                Trinity::Containers::RandomResizeList(l_Targets, l_MaxTargets);
 
             // for compability with older code - add only unit and go targets
             // TODO: remove this
@@ -1208,7 +1208,7 @@ void Spell::SelectImplicitConeTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
                 l_UnitTargets.push_back(m_caster);
                 if (l_UnitTargets.size() > l_MaxSize)
                 {
-                    l_UnitTargets.sort(JadeCore::HealthPctOrderPred());
+                    l_UnitTargets.sort(Trinity::HealthPctOrderPred());
                     l_UnitTargets.resize(l_MaxSize);
                 }
             }
@@ -1484,7 +1484,7 @@ void Spell::SelectImplicitAreaTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
                             }
                             else
                             {
-                                l_UnitTargets.sort(JadeCore::WorldObjectDistanceCompareOrderPred(m_caster));
+                                l_UnitTargets.sort(Trinity::WorldObjectDistanceCompareOrderPred(m_caster));
                                 Unit* l_Victim = (*l_UnitTargets.begin())->ToUnit();
 
                                 if (l_Victim)
@@ -1582,7 +1582,7 @@ void Spell::SelectImplicitAreaTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
             {
                 if (l_UnitTargets.size() > l_MaxSize)
                 {
-                    l_UnitTargets.sort(JadeCore::HealthPctOrderPred());
+                    l_UnitTargets.sort(Trinity::HealthPctOrderPred());
                     l_UnitTargets.resize(l_MaxSize);
                 }
             }
@@ -1596,7 +1596,7 @@ void Spell::SelectImplicitAreaTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
 
                 if (l_UnitTargets.size() > l_MaxSize)
                 {
-                    l_UnitTargets.sort(JadeCore::PowerPctOrderPred((Powers)l_Power));
+                    l_UnitTargets.sort(Trinity::PowerPctOrderPred((Powers)l_Power));
                     l_UnitTargets.resize(l_MaxSize);
                 }
             }
@@ -1614,7 +1614,7 @@ void Spell::SelectImplicitAreaTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
 
         // Other special target selection goes here
         if (uint32 l_MaxTargets = m_spellValue->MaxAffectedTargets)
-            JadeCore::Containers::RandomResizeList(l_UnitTargets, l_MaxTargets);
+            Trinity::Containers::RandomResizeList(l_UnitTargets, l_MaxTargets);
 
         for (std::list<Unit*>::iterator l_Iterator = l_UnitTargets.begin(); l_Iterator != l_UnitTargets.end(); ++l_Iterator)
             AddUnitTarget(*l_Iterator, p_EffMask, false);
@@ -1623,7 +1623,7 @@ void Spell::SelectImplicitAreaTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
     if (!l_GObjTargets.empty())
     {
         if (uint32 l_MaxTargets = m_spellValue->MaxAffectedTargets)
-            JadeCore::Containers::RandomResizeList(l_GObjTargets, l_MaxTargets);
+            Trinity::Containers::RandomResizeList(l_GObjTargets, l_MaxTargets);
 
         for (std::list<GameObject*>::iterator l_Iterator = l_GObjTargets.begin(); l_Iterator != l_GObjTargets.end(); ++l_Iterator)
             AddGOTarget(*l_Iterator, p_EffMask);
@@ -1632,7 +1632,7 @@ void Spell::SelectImplicitAreaTargets(SpellEffIndex p_EffIndex, SpellImplicitTar
     if (!l_AreaTriggerTargets.empty())
     {
         if (uint32 l_MaxTargets = m_spellValue->MaxAffectedTargets)
-            JadeCore::Containers::RandomResizeList(l_AreaTriggerTargets, l_MaxTargets);
+            Trinity::Containers::RandomResizeList(l_AreaTriggerTargets, l_MaxTargets);
 
         for (std::list<AreaTrigger*>::iterator l_Iterator = l_AreaTriggerTargets.begin(); l_Iterator != l_AreaTriggerTargets.end(); ++l_Iterator)
             AddAreaTriggerTarget(*l_Iterator, p_EffMask);
@@ -1682,9 +1682,9 @@ void Spell::SelectImplicitCylinderTargets(SpellEffIndex p_EffIndex, SpellImplici
 
     if (uint32 l_ContainerTypeMask = GetSearcherTypeMask(l_ObjectType, l_ConditionsList))
     {
-        JadeCore::WorldObjectSpellWidthTargetCheck l_Check(l_Width, l_Radius, m_caster, m_spellInfo, l_SelectionType, l_ConditionsList);
-        JadeCore::WorldObjectListSearcher<JadeCore::WorldObjectSpellWidthTargetCheck> l_Searcher(m_caster, l_Targets, l_Check, l_ContainerTypeMask);
-        SearchTargets<JadeCore::WorldObjectListSearcher<JadeCore::WorldObjectSpellWidthTargetCheck> >(l_Searcher, l_ContainerTypeMask, m_caster, m_caster, l_Radius);
+        Trinity::WorldObjectSpellWidthTargetCheck l_Check(l_Width, l_Radius, m_caster, m_spellInfo, l_SelectionType, l_ConditionsList);
+        Trinity::WorldObjectListSearcher<Trinity::WorldObjectSpellWidthTargetCheck> l_Searcher(m_caster, l_Targets, l_Check, l_ContainerTypeMask);
+        SearchTargets<Trinity::WorldObjectListSearcher<Trinity::WorldObjectSpellWidthTargetCheck> >(l_Searcher, l_ContainerTypeMask, m_caster, m_caster, l_Radius);
 
         CallScriptObjectAreaTargetSelectHandlers(l_Targets, p_EffIndex);
 
@@ -1692,7 +1692,7 @@ void Spell::SelectImplicitCylinderTargets(SpellEffIndex p_EffIndex, SpellImplici
         {
             /// Other special target selection goes here
             if (uint32 l_MaxTargets = m_spellValue->MaxAffectedTargets)
-                JadeCore::Containers::RandomResizeList(l_Targets, l_MaxTargets);
+                Trinity::Containers::RandomResizeList(l_Targets, l_MaxTargets);
         }
 
         std::list<Unit*>        l_UnitTargets;
@@ -1925,7 +1925,7 @@ void Spell::SelectImplicitCasterObjectTargets(SpellEffIndex effIndex, SpellImpli
                 if (!l_UnitTargets.empty())
                 {
                     if (uint32 l_MaxTargets = m_spellValue->MaxAffectedTargets)
-                        JadeCore::Containers::RandomResizeList(l_UnitTargets, l_MaxTargets);
+                        Trinity::Containers::RandomResizeList(l_UnitTargets, l_MaxTargets);
 
                     for (Unit* l_Iterator : l_UnitTargets)
                         AddUnitTarget(l_Iterator, 1 << l_I, false);
@@ -2032,7 +2032,7 @@ void Spell::SelectImplicitTargetObjectTargets(SpellEffIndex p_EffIndex, SpellImp
                     {
                         // Other special target selection goes here
                         if (uint32 l_MaxTargets = m_spellValue->MaxAffectedTargets)
-                            JadeCore::Containers::RandomResizeList(l_UnitTargets, l_MaxTargets);
+                            Trinity::Containers::RandomResizeList(l_UnitTargets, l_MaxTargets);
 
                         for (std::list<Unit*>::iterator l_Iterator = l_UnitTargets.begin(); l_Iterator != l_UnitTargets.end(); ++l_Iterator)
                             AddUnitTarget(*l_Iterator, 1 << l_I, false);
@@ -2150,13 +2150,13 @@ void Spell::SelectImplicitTrajTargets()
     float srcToDestDelta = m_targets.GetDstPos()->m_positionZ - m_targets.GetSrcPos()->m_positionZ;
 
     std::list<WorldObject*> targets;
-    JadeCore::WorldObjectSpellTrajTargetCheck check(dist2d, m_targets.GetSrcPos(), m_caster, m_spellInfo);
-    JadeCore::WorldObjectListSearcher<JadeCore::WorldObjectSpellTrajTargetCheck> searcher(m_caster, targets, check, GRID_MAP_TYPE_MASK_ALL);
-    SearchTargets<JadeCore::WorldObjectListSearcher<JadeCore::WorldObjectSpellTrajTargetCheck> > (searcher, GRID_MAP_TYPE_MASK_ALL, m_caster, m_targets.GetSrcPos(), dist2d);
+    Trinity::WorldObjectSpellTrajTargetCheck check(dist2d, m_targets.GetSrcPos(), m_caster, m_spellInfo);
+    Trinity::WorldObjectListSearcher<Trinity::WorldObjectSpellTrajTargetCheck> searcher(m_caster, targets, check, GRID_MAP_TYPE_MASK_ALL);
+    SearchTargets<Trinity::WorldObjectListSearcher<Trinity::WorldObjectSpellTrajTargetCheck> > (searcher, GRID_MAP_TYPE_MASK_ALL, m_caster, m_targets.GetSrcPos(), dist2d);
     if (targets.empty())
         return;
 
-    targets.sort(JadeCore::ObjectDistanceOrderPred(m_caster));
+    targets.sort(Trinity::ObjectDistanceOrderPred(m_caster));
 
     float b = tangent(m_targets.GetElevation());
     float a = (srcToDestDelta - dist2d * b) / (dist2d * dist2d);
@@ -2186,7 +2186,7 @@ void Spell::SelectImplicitTrajTargets()
         }
 
 #define CHECK_DIST {\
-            DEBUG_TRAJ(sLog->outError(LOG_FILTER_SPELLS_AURAS, "Spell::SelectTrajTargets: dist %f, height %f.", dist, height);)\
+            DEBUG_TRAJ(TC_LOG_ERROR("spells", "Spell::SelectTrajTargets: dist %f, height %f.", dist, height);)\
             if (dist > bestDist)\
                 continue;\
             if (dist < objDist2d + size && dist > objDist2d - size)\
@@ -2401,7 +2401,7 @@ void Spell::SearchTargets(SEARCHER& searcher, uint32 containerMask, Unit* refere
         x = pos->GetPositionX();
         y = pos->GetPositionY();
 
-        CellCoord p(JadeCore::ComputeCellCoord(x, y));
+        CellCoord p(Trinity::ComputeCellCoord(x, y));
         Cell cell(p);
         cell.SetNoCreate();
 
@@ -2426,9 +2426,9 @@ WorldObject* Spell::SearchNearbyTarget(float range, SpellTargetObjectTypes objec
     uint32 containerTypeMask = GetSearcherTypeMask(objectType, condList);
     if (!containerTypeMask)
         return NULL;
-    JadeCore::WorldObjectSpellNearbyTargetCheck check(range, m_caster, m_spellInfo, selectionType, condList);
-    JadeCore::WorldObjectLastSearcher<JadeCore::WorldObjectSpellNearbyTargetCheck> searcher(m_caster, target, check, containerTypeMask);
-    SearchTargets<JadeCore::WorldObjectLastSearcher<JadeCore::WorldObjectSpellNearbyTargetCheck> > (searcher, containerTypeMask, m_caster, m_caster, range);
+    Trinity::WorldObjectSpellNearbyTargetCheck check(range, m_caster, m_spellInfo, selectionType, condList);
+    Trinity::WorldObjectLastSearcher<Trinity::WorldObjectSpellNearbyTargetCheck> searcher(m_caster, target, check, containerTypeMask);
+    SearchTargets<Trinity::WorldObjectLastSearcher<Trinity::WorldObjectSpellNearbyTargetCheck> > (searcher, containerTypeMask, m_caster, m_caster, range);
     return target;
 }
 
@@ -2437,9 +2437,9 @@ void Spell::SearchAreaTargets(std::list<WorldObject*>& targets, float range, Pos
     uint32 containerTypeMask = GetSearcherTypeMask(objectType, condList);
     if (!containerTypeMask)
         return;
-    JadeCore::WorldObjectSpellAreaTargetCheck check(range, position, m_caster, referer, m_spellInfo, selectionType, condList);
-    JadeCore::WorldObjectListSearcher<JadeCore::WorldObjectSpellAreaTargetCheck> searcher(m_caster, targets, check, containerTypeMask);
-    SearchTargets<JadeCore::WorldObjectListSearcher<JadeCore::WorldObjectSpellAreaTargetCheck> > (searcher, containerTypeMask, m_caster, position, range);
+    Trinity::WorldObjectSpellAreaTargetCheck check(range, position, m_caster, referer, m_spellInfo, selectionType, condList);
+    Trinity::WorldObjectListSearcher<Trinity::WorldObjectSpellAreaTargetCheck> searcher(m_caster, targets, check, containerTypeMask);
+    SearchTargets<Trinity::WorldObjectListSearcher<Trinity::WorldObjectSpellAreaTargetCheck> > (searcher, containerTypeMask, m_caster, position, range);
 }
 
 void Spell::SearchChainTargets(std::list<WorldObject*>& targets, uint32 chainTargets, WorldObject* target, SpellTargetObjectTypes objectType, SpellTargetCheckTypes selectType, ConditionContainer* condList, bool isChainHeal)
@@ -4929,7 +4929,15 @@ void Spell::finish(bool ok)
 
     // Stop Attack for some spells
     if (m_spellInfo->Attributes & SPELL_ATTR0_STOP_ATTACK_TARGET)
+    {
         m_caster->AttackStop();
+    }
+    
+    // Hack Shadowmeld
+    if (m_spellInfo->Id == 58984)
+    {
+        m_caster->CombatStop();
+    }
 
     if (m_castItemGUID && m_caster->IsPlayer())
         if (Item* item = m_caster->ToPlayer()->GetItemByGuid(m_castItemGUID))
@@ -6011,7 +6019,7 @@ void Spell::TakePower()
 
         if (powerType >= MAX_POWERS)
         {
-            sLog->outAshran("Spel::TakePower -> Unknown power type [%u]", powerType);
+            TC_LOG_ERROR("server.worldserver", "Spel::TakePower -> Unknown power type [%u]", powerType);
             continue;
         }
 
@@ -8142,14 +8150,14 @@ SpellCastResult Spell::CheckItems()
     // check spell focus object
     if (m_spellInfo->RequiresSpellFocus)
     {
-        CellCoord p(JadeCore::ComputeCellCoord(m_caster->GetPositionX(), m_caster->GetPositionY()));
+        CellCoord p(Trinity::ComputeCellCoord(m_caster->GetPositionX(), m_caster->GetPositionY()));
         Cell cell(p);
 
         GameObject* ok = NULL;
-        JadeCore::GameObjectFocusCheck go_check(m_caster, m_spellInfo->RequiresSpellFocus);
-        JadeCore::GameObjectSearcher<JadeCore::GameObjectFocusCheck> checker(m_caster, ok, go_check);
+        Trinity::GameObjectFocusCheck go_check(m_caster, m_spellInfo->RequiresSpellFocus);
+        Trinity::GameObjectSearcher<Trinity::GameObjectFocusCheck> checker(m_caster, ok, go_check);
 
-        TypeContainerVisitor<JadeCore::GameObjectSearcher<JadeCore::GameObjectFocusCheck>, GridTypeMapContainer > object_checker(checker);
+        TypeContainerVisitor<Trinity::GameObjectSearcher<Trinity::GameObjectFocusCheck>, GridTypeMapContainer > object_checker(checker);
         Map& map = *m_caster->GetMap();
         cell.Visit(p, object_checker, map, *m_caster, m_caster->GetVisibilityRange());
 
@@ -8925,9 +8933,9 @@ SpellEvent::~SpellEvent()
     }
     else
     {
-        sLog->outError(LOG_FILTER_SPELLS_AURAS, "~SpellEvent: %s %u tried to delete non-deletable spell %u. Was not deleted, causes memory leak.",
+        TC_LOG_ERROR("spells", "~SpellEvent: %s %u tried to delete non-deletable spell %u. Was not deleted, causes memory leak.",
             (m_Spell->GetCaster()->IsPlayer() ? "Player" : "Creature"), m_Spell->GetCaster()->GetGUIDLow(), m_Spell->m_spellInfo->Id);
-        ASSERT(false);
+        ABORT();
     }
 }
 
@@ -9312,7 +9320,7 @@ void Spell::LoadScripts()
             m_loadedScripts.erase(bitr);
             continue;
         }
-        sLog->outDebug(LOG_FILTER_SPELLS_AURAS, "Spell::LoadScripts: Script `%s` for spell `%u` is loaded now", (*itr)->_GetScriptName()->c_str(), m_spellInfo->Id);
+        TC_LOG_DEBUG("spells", "Spell::LoadScripts: Script `%s` for spell `%u` is loaded now", (*itr)->_GetScriptName()->c_str(), m_spellInfo->Id);
         (*itr)->Register();
         ++itr;
     }
@@ -9333,7 +9341,7 @@ void Spell::CallScriptBeforeCastHandlers()
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 void Spell::CallScriptOnCastHandlers()
@@ -9351,7 +9359,7 @@ void Spell::CallScriptOnCastHandlers()
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 void Spell::CallScriptAfterCastHandlers()
@@ -9369,7 +9377,7 @@ void Spell::CallScriptAfterCastHandlers()
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 bool Spell::CallScriptCheckInterruptHandlers()
@@ -9393,7 +9401,7 @@ bool Spell::CallScriptCheckInterruptHandlers()
 
     l_ScriptExecuteTime = getMSTime() - l_ScriptExecuteTime;
     if (l_ScriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, l_ScriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, l_ScriptExecuteTime);
     return l_CanInterrupt;
 }
 
@@ -9413,7 +9421,7 @@ void Spell::CallScriptOnPrepareHandlers()
     }
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 
@@ -9437,7 +9445,7 @@ SpellCastResult Spell::CallScriptCheckCastHandlers()
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
     return retVal;
 }
 
@@ -9450,7 +9458,7 @@ void Spell::PrepareScriptHitHandlers()
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 bool Spell::CallScriptEffectHandlers(SpellEffIndex effIndex, SpellEffectHandleMode mode)
@@ -9486,7 +9494,7 @@ bool Spell::CallScriptEffectHandlers(SpellEffIndex effIndex, SpellEffectHandleMo
                 hookType = SPELL_SCRIPT_HOOK_EFFECT_HIT_TARGET;
                 break;
             default:
-                ASSERT(false);
+                ABORT();
                 return false;
         }
         (*scritr)->_PrepareScriptCall(hookType);
@@ -9503,7 +9511,7 @@ bool Spell::CallScriptEffectHandlers(SpellEffIndex effIndex, SpellEffectHandleMo
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 
     return preventDefault;
 }
@@ -9522,7 +9530,7 @@ void Spell::CallScriptBeforeHitHandlers()
     }
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 void Spell::CallScriptOnHitHandlers()
@@ -9540,7 +9548,7 @@ void Spell::CallScriptOnHitHandlers()
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 void Spell::CallScriptAfterHitHandlers()
@@ -9558,7 +9566,7 @@ void Spell::CallScriptAfterHitHandlers()
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 void Spell::CallScriptObjectAreaTargetSelectHandlers(std::list<WorldObject*>& targets, SpellEffIndex effIndex)
@@ -9577,7 +9585,7 @@ void Spell::CallScriptObjectAreaTargetSelectHandlers(std::list<WorldObject*>& ta
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 void Spell::CallScriptObjectTargetSelectHandlers(WorldObject*& target, SpellEffIndex effIndex)
@@ -9596,7 +9604,7 @@ void Spell::CallScriptObjectTargetSelectHandlers(WorldObject*& target, SpellEffI
 
     scriptExecuteTime = getMSTime() - scriptExecuteTime;
     if (scriptExecuteTime > 10)
-        sLog->outAshran("SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
+        TC_LOG_ERROR("server.worldserver", "SpellScript [%u] take more than 10 ms to execute (%u ms)", m_spellInfo->Id, scriptExecuteTime);
 }
 
 bool Spell::CanExecuteTriggersOnHit(uint32 effMask, SpellInfo const* triggeredByAura) const
@@ -9920,7 +9928,7 @@ bool Spell::IsSpellTriggeredAfterCast() const
     return false;
 }
 
-namespace JadeCore
+namespace Trinity
 {
 
 WorldObjectSpellTargetCheck::WorldObjectSpellTargetCheck(Unit* caster, Unit* referer, SpellInfo const* spellInfo,
@@ -10101,4 +10109,4 @@ bool WorldObjectSpellTrajTargetCheck::operator()(WorldObject* target)
     return WorldObjectSpellAreaTargetCheck::operator ()(target);
 }
 
-} //namespace JadeCore
+} //namespace Trinity

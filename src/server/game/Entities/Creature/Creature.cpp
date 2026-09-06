@@ -135,8 +135,8 @@ bool ForcedDespawnDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
 }
 
 Creature::Creature(bool isWorldObject) : Unit(isWorldObject), MapObject(),
-lootForPickPocketed(false), lootForBody(false), m_groupLootTimer(0), lootingGroupLowGUID(0),
-m_PlayerDamageReq(0), m_lootRecipient(0), m_lootRecipientGroup(0), m_corpseRemoveTime(0), m_respawnTime(0),
+m_groupLootTimer(0), lootingGroupLowGUID(0), m_PlayerDamageReq(0),
+m_lootRecipient(0), m_lootRecipientGroup(0), _skinner(0), _pickpocketLootRestore(0), m_corpseRemoveTime(0), m_respawnTime(0),
 m_respawnDelay(300), m_corpseDelay(60), m_respawnradius(0.0f), m_reactState(REACT_AGGRESSIVE),
 m_defaultMovementType(IDLE_MOTION_TYPE), m_DBTableGuid(0), m_equipmentId(0), m_OriginalEquipmentId(0), m_AlreadyCallAssistance(false),
 m_AlreadySearchedAssistance(false), m_regenHealth(true), m_AI_locked(false), m_meleeDamageSchoolMask(SPELL_SCHOOL_MASK_NORMAL),
@@ -184,7 +184,7 @@ Creature::~Creature()
     i_AI = NULL;
 
     //if (m_uint32Values)
-    //    sLog->outError(LOG_FILTER_UNITS, "Deconstruct Creature Entry = %u", GetEntry());
+    //    TC_LOG_ERROR("entities.unit", "Deconstruct Creature Entry = %u", GetEntry());
 }
 
 void Creature::AddToWorld()
@@ -277,7 +277,7 @@ bool Creature::InitEntry(uint32 Entry, uint32 /*team*/, const CreatureData* data
     CreatureTemplate const* normalInfo = sObjectMgr->GetCreatureTemplate(Entry);
     if (!normalInfo)
     {
-        sLog->outError(LOG_FILTER_SQL, "Creature::InitEntry creature entry %u does not exist.", Entry);
+        TC_LOG_ERROR("sql.sql", "Creature::InitEntry creature entry %u does not exist.", Entry);
         return false;
     }
 
@@ -319,7 +319,7 @@ bool Creature::InitEntry(uint32 Entry, uint32 /*team*/, const CreatureData* data
     // Cancel load if no model defined
     if (!(cinfo->GetFirstValidModelId()))
     {
-        sLog->outError(LOG_FILTER_SQL, "Creature (Entry: %u) has no model defined in table `creature_template`, can't load. ", Entry);
+        TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) has no model defined in table `creature_template`, can't load. ", Entry);
         return false;
     }
 
@@ -327,7 +327,7 @@ bool Creature::InitEntry(uint32 Entry, uint32 /*team*/, const CreatureData* data
     CreatureModelInfo const* minfo = sObjectMgr->GetCreatureModelRandomGender(&displayID);
     if (!minfo)                                             // Cancel load if no model defined
     {
-        sLog->outError(LOG_FILTER_SQL, "Creature (Entry: %u) has no model defined in table `creature_template`, can't load. ", Entry);
+        TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) has no model defined in table `creature_template`, can't load. ", Entry);
         return false;
     }
 
@@ -564,11 +564,11 @@ void Creature::Update(uint32 diff)
     {
         case JUST_RESPAWNED:
             // Must not be called, see Creature::setDeathState JUST_RESPAWNED -> ALIVE promoting.
-            sLog->outError(LOG_FILTER_UNITS, "Creature (GUID: %u Entry: %u) in wrong state: JUST_RESPAWNED (4)", GetGUIDLow(), GetEntry());
+            TC_LOG_ERROR("entities.unit", "Creature (GUID: %u Entry: %u) in wrong state: JUST_RESPAWNED (4)", GetGUIDLow(), GetEntry());
             break;
         case JUST_DIED:
             // Must not be called, see Creature::setDeathState JUST_DIED -> CORPSE promoting.
-            sLog->outError(LOG_FILTER_UNITS, "Creature (GUID: %u Entry: %u) in wrong state: JUST_DEAD (1)", GetGUIDLow(), GetEntry());
+            TC_LOG_ERROR("entities.unit", "Creature (GUID: %u Entry: %u) in wrong state: JUST_DEAD (1)", GetGUIDLow(), GetEntry());
             break;
         case DEAD:
         {
@@ -618,7 +618,7 @@ void Creature::Update(uint32 diff)
             else if (m_corpseRemoveTime <= time(NULL))
             {
                 RemoveCorpse(false);
-                sLog->outDebug(LOG_FILTER_UNITS, "Removing corpse... %u ", GetUInt32Value(OBJECT_FIELD_ENTRY_ID));
+                TC_LOG_DEBUG("entities.unit", "Removing corpse... %u ", GetUInt32Value(OBJECT_FIELD_ENTRY_ID));
             }
             break;
         }
@@ -648,7 +648,7 @@ void Creature::Update(uint32 diff)
                 i_AI->UpdateAI(diff);
 
                 if ((getMSTime() - diffAI) > 10)
-                    sLog->outAshran("CreatureScript [%u] take more than 10 ms to execute (%u ms)", GetEntry(), (getMSTime() - diffAI));
+                    TC_LOG_ERROR("server.worldserver", "CreatureScript [%u] take more than 10 ms to execute (%u ms)", GetEntry(), (getMSTime() - diffAI));
 
                 m_AI_locked = false;
             }
@@ -660,6 +660,16 @@ void Creature::Update(uint32 diff)
 
             /// - Handle regen timers
             {
+
+                time_t now = time(NULL);
+
+                // Check if we should refill the pickpocketing loot
+                if (loot.loot_type == LOOT_PICKPOCKETING && _pickpocketLootRestore && _pickpocketLootRestore <= now)
+                {
+                    loot.clear();
+                    _pickpocketLootRestore = 0;
+                }
+
                 if (m_RegenPowerTimer > 0)
                 {
                     if (diff >= m_RegenPowerTimer)
@@ -821,13 +831,13 @@ void Creature::DoFleeToGetAssistance()
     {
         Creature* creature = NULL;
 
-        CellCoord p(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+        CellCoord p(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
         Cell cell(p);
         cell.SetNoCreate();
-        JadeCore::NearestAssistCreatureInCreatureRangeCheck u_check(this, getVictim(), radius);
-        JadeCore::CreatureLastSearcher<JadeCore::NearestAssistCreatureInCreatureRangeCheck> searcher(this, creature, u_check);
+        Trinity::NearestAssistCreatureInCreatureRangeCheck u_check(this, getVictim(), radius);
+        Trinity::CreatureLastSearcher<Trinity::NearestAssistCreatureInCreatureRangeCheck> searcher(this, creature, u_check);
 
-        TypeContainerVisitor<JadeCore::CreatureLastSearcher<JadeCore::NearestAssistCreatureInCreatureRangeCheck>, GridTypeMapContainer > grid_creature_searcher(searcher);
+        TypeContainerVisitor<Trinity::CreatureLastSearcher<Trinity::NearestAssistCreatureInCreatureRangeCheck>, GridTypeMapContainer > grid_creature_searcher(searcher);
 
         cell.Visit(p, grid_creature_searcher, *GetMap(), *this, radius);
 
@@ -889,7 +899,7 @@ bool Creature::Create(uint32 guidlow, Map* map, uint32 phaseMask, uint32 Entry, 
     CreatureTemplate const* cinfo = sObjectMgr->GetCreatureTemplate(Entry);
     if (!cinfo)
     {
-        sLog->outError(LOG_FILTER_SQL, "Creature::Create(): creature template (guidlow: %u, entry: %u) does not exist.", guidlow, Entry);
+        TC_LOG_ERROR("sql.sql", "Creature::Create(): creature template (guidlow: %u, entry: %u) does not exist.", guidlow, Entry);
         return false;
     }
 
@@ -903,7 +913,7 @@ bool Creature::Create(uint32 guidlow, Map* map, uint32 phaseMask, uint32 Entry, 
 
     if (!IsPositionValid())
     {
-        sLog->outError(LOG_FILTER_UNITS, "Creature::Create(): given coordinates for creature (guidlow %d, entry %d) are not valid (X: %f, Y: %f, Z: %f, O: %f)", guidlow, Entry, x, y, z, ang);
+        TC_LOG_ERROR("entities.unit", "Creature::Create(): given coordinates for creature (guidlow %d, entry %d) are not valid (X: %f, Y: %f, Z: %f, O: %f)", guidlow, Entry, x, y, z, ang);
         return false;
     }
 
@@ -1187,7 +1197,7 @@ void Creature::SaveToDB()
     CreatureData const* data = sObjectMgr->GetCreatureData(m_DBTableGuid);
     if (!data)
     {
-        sLog->outError(LOG_FILTER_UNITS, "Creature::SaveToDB failed, cannot get creature data!");
+        TC_LOG_ERROR("entities.unit", "Creature::SaveToDB failed, cannot get creature data!");
         return;
     }
 
@@ -1567,7 +1577,7 @@ bool Creature::CreateFromProto(uint32 guidlow, uint32 Entry, uint32 vehId, uint3
     CreatureTemplate const* cinfo = sObjectMgr->GetCreatureTemplate(Entry);
     if (!cinfo)
     {
-        sLog->outError(LOG_FILTER_SQL, "Creature::CreateFromProto(): creature template (guidlow: %u, entry: %u) does not exist.", guidlow, Entry);
+        TC_LOG_ERROR("sql.sql", "Creature::CreateFromProto(): creature template (guidlow: %u, entry: %u) does not exist.", guidlow, Entry);
         return false;
     }
 
@@ -1576,10 +1586,10 @@ bool Creature::CreateFromProto(uint32 guidlow, uint32 Entry, uint32 vehId, uint3
     if (!vehId)
         vehId = cinfo->VehicleId;
 
+    Object::_Create(guidlow, Entry, vehId ? HIGHGUID_VEHICLE : HIGHGUID_UNIT);
+
     if (vehId && !CreateVehicleKit(vehId, Entry))
         vehId = 0;
-
-    Object::_Create(guidlow, Entry, vehId ? HIGHGUID_VEHICLE : HIGHGUID_UNIT);
 
     if (!UpdateEntry(Entry, team, data))
         return false;
@@ -1593,7 +1603,7 @@ bool Creature::LoadCreatureFromDB(uint32 guid, Map* map, bool addToMap)
 
     if (!data)
     {
-        sLog->outError(LOG_FILTER_SQL, "Creature (GUID: %u) not found in table `creature`, can't load. ", guid);
+        TC_LOG_ERROR("sql.sql", "Creature (GUID: %u) not found in table `creature`, can't load. ", guid);
         return false;
     }
 
@@ -1662,7 +1672,7 @@ bool Creature::LoadCreatureFromDB(uint32 guid, Map* map, bool addToMap)
     if (addToMap && !GetMap()->AddToMap(this))
         return false;
 
-    sWildBattlePetMgr->OnAddToMap(this);
+    GetMap()->GetWildBattlePetPools()->OnAddToMap(this);
 
     return true;
 }
@@ -1747,7 +1757,7 @@ void Creature::DeleteFromDB()
 {
     if (!m_DBTableGuid)
     {
-        sLog->outError(LOG_FILTER_UNITS, "Trying to delete not saved creature! LowGUID: %u, Entry: %u", GetGUIDLow(), GetEntry());
+        TC_LOG_ERROR("entities.unit", "Trying to delete not saved creature! LowGUID: %u, Entry: %u", GetGUIDLow(), GetEntry());
         return;
     }
 
@@ -1913,11 +1923,6 @@ void Creature::setDeathState(DeathState s)
 
         setActive(false);
 
-        if (!isPet() && GetCreatureTemplate()->SkinLootId)
-            if (LootTemplates_Skinning.HaveLootFor(GetCreatureTemplate()->SkinLootId))
-                if (hasLootRecipient())
-                    SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE);
-
         if (HasSearchedAssistance())
         {
             SetNoSearchAssistance(false);
@@ -1992,10 +1997,10 @@ void Creature::DoRespawn()
         if (m_DBTableGuid)
             GetMap()->RemoveCreatureRespawnTime(m_DBTableGuid);
 
-        sLog->outDebug(LOG_FILTER_UNITS, "Respawning creature %s (GuidLow: %u, Full GUID: " UI64FMTD " Entry: %u)", GetName(), GetGUIDLow(), GetGUID(), GetEntry());
+        TC_LOG_DEBUG("entities.unit", "Respawning creature %s (GuidLow: %u, Full GUID: " UI64FMTD " Entry: %u)", GetName(), GetGUIDLow(), GetGUID(), GetEntry());
         m_respawnTime = 0;
-        lootForPickPocketed = false;
-        lootForBody = false;
+        _pickpocketLootRestore = 0;
+        loot.clear();
 
         if (m_originalEntry != GetEntry())
             UpdateEntry(m_originalEntry);
@@ -2161,7 +2166,7 @@ SpellInfo const* Creature::reachWithSpellAttack(Unit* victim)
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(m_spells[i]);
         if (!spellInfo)
         {
-            sLog->outError(LOG_FILTER_UNITS, "WORLD: unknown spell id %i", m_spells[i]);
+            TC_LOG_ERROR("entities.unit", "WORLD: unknown spell id %i", m_spells[i]);
             continue;
         }
 
@@ -2223,7 +2228,7 @@ SpellInfo const* Creature::reachWithSpellCure(Unit* victim)
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(m_spells[i]);
         if (!spellInfo)
         {
-            sLog->outError(LOG_FILTER_UNITS, "WORLD: unknown spell id %i", m_spells[i]);
+            TC_LOG_ERROR("entities.unit", "WORLD: unknown spell id %i", m_spells[i]);
             continue;
         }
 
@@ -2271,7 +2276,7 @@ SpellInfo const* Creature::reachWithSpellCure(Unit* victim)
 // select nearest hostile unit within the given distance (regardless of threat list).
 Unit* Creature::SelectNearestTarget(float dist) const
 {
-    CellCoord p(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+    CellCoord p(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
     Cell cell(p);
     cell.SetNoCreate();
 
@@ -2281,11 +2286,11 @@ Unit* Creature::SelectNearestTarget(float dist) const
         if (dist == 0.0f)
             dist = MAX_VISIBILITY_DISTANCE;
 
-        JadeCore::NearestHostileUnitCheck u_check(this, dist);
-        JadeCore::UnitLastSearcher<JadeCore::NearestHostileUnitCheck> searcher(this, target, u_check);
+        Trinity::NearestHostileUnitCheck u_check(this, dist);
+        Trinity::UnitLastSearcher<Trinity::NearestHostileUnitCheck> searcher(this, target, u_check);
 
-        TypeContainerVisitor<JadeCore::UnitLastSearcher<JadeCore::NearestHostileUnitCheck>, WorldTypeMapContainer > world_unit_searcher(searcher);
-        TypeContainerVisitor<JadeCore::UnitLastSearcher<JadeCore::NearestHostileUnitCheck>, GridTypeMapContainer >  grid_unit_searcher(searcher);
+        TypeContainerVisitor<Trinity::UnitLastSearcher<Trinity::NearestHostileUnitCheck>, WorldTypeMapContainer > world_unit_searcher(searcher);
+        TypeContainerVisitor<Trinity::UnitLastSearcher<Trinity::NearestHostileUnitCheck>, GridTypeMapContainer >  grid_unit_searcher(searcher);
 
         cell.Visit(p, world_unit_searcher, *GetMap(), *this, dist);
         cell.Visit(p, grid_unit_searcher, *GetMap(), *this, dist);
@@ -2297,7 +2302,7 @@ Unit* Creature::SelectNearestTarget(float dist) const
 // select nearest hostile unit within the given distance and without cc on it (regardless of threat list).
 Unit* Creature::SelectNearestTargetNoCC(float dist) const
 {
-    CellCoord p(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+    CellCoord p(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
     Cell cell(p);
     cell.SetNoCreate();
 
@@ -2307,11 +2312,11 @@ Unit* Creature::SelectNearestTargetNoCC(float dist) const
         if (dist == 0.0f)
             dist = MAX_VISIBILITY_DISTANCE;
 
-        JadeCore::NearestHostileNoCCUnitCheck u_check(this, dist);
-        JadeCore::UnitLastSearcher<JadeCore::NearestHostileNoCCUnitCheck> searcher(this, target, u_check);
+        Trinity::NearestHostileNoCCUnitCheck u_check(this, dist);
+        Trinity::UnitLastSearcher<Trinity::NearestHostileNoCCUnitCheck> searcher(this, target, u_check);
 
-        TypeContainerVisitor<JadeCore::UnitLastSearcher<JadeCore::NearestHostileNoCCUnitCheck>, WorldTypeMapContainer > world_unit_searcher(searcher);
-        TypeContainerVisitor<JadeCore::UnitLastSearcher<JadeCore::NearestHostileNoCCUnitCheck>, GridTypeMapContainer >  grid_unit_searcher(searcher);
+        TypeContainerVisitor<Trinity::UnitLastSearcher<Trinity::NearestHostileNoCCUnitCheck>, WorldTypeMapContainer > world_unit_searcher(searcher);
+        TypeContainerVisitor<Trinity::UnitLastSearcher<Trinity::NearestHostileNoCCUnitCheck>, GridTypeMapContainer >  grid_unit_searcher(searcher);
 
         cell.Visit(p, world_unit_searcher, *GetMap(), *this, dist);
         cell.Visit(p, grid_unit_searcher, *GetMap(), *this, dist);
@@ -2323,7 +2328,7 @@ Unit* Creature::SelectNearestTargetNoCC(float dist) const
 // select nearest hostile unit within the given attack distance (i.e. distance is ignored if > than ATTACK_DISTANCE), regardless of threat list.
 Unit* Creature::SelectNearestTargetInAttackDistance(float dist) const
 {
-    CellCoord p(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+    CellCoord p(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
     Cell cell(p);
     cell.SetNoCreate();
 
@@ -2331,16 +2336,16 @@ Unit* Creature::SelectNearestTargetInAttackDistance(float dist) const
 
     if (dist > MAX_VISIBILITY_DISTANCE)
     {
-        sLog->outError(LOG_FILTER_UNITS, "Creature (GUID: %u Entry: %u) SelectNearestTargetInAttackDistance called with dist > MAX_VISIBILITY_DISTANCE. Distance set to ATTACK_DISTANCE.", GetGUIDLow(), GetEntry());
+        TC_LOG_ERROR("entities.unit", "Creature (GUID: %u Entry: %u) SelectNearestTargetInAttackDistance called with dist > MAX_VISIBILITY_DISTANCE. Distance set to ATTACK_DISTANCE.", GetGUIDLow(), GetEntry());
         dist = ATTACK_DISTANCE;
     }
 
     {
-        JadeCore::NearestHostileUnitInAttackDistanceCheck u_check(this, dist);
-        JadeCore::UnitLastSearcher<JadeCore::NearestHostileUnitInAttackDistanceCheck> searcher(this, target, u_check);
+        Trinity::NearestHostileUnitInAttackDistanceCheck u_check(this, dist);
+        Trinity::UnitLastSearcher<Trinity::NearestHostileUnitInAttackDistanceCheck> searcher(this, target, u_check);
 
-        TypeContainerVisitor<JadeCore::UnitLastSearcher<JadeCore::NearestHostileUnitInAttackDistanceCheck>, WorldTypeMapContainer > world_unit_searcher(searcher);
-        TypeContainerVisitor<JadeCore::UnitLastSearcher<JadeCore::NearestHostileUnitInAttackDistanceCheck>, GridTypeMapContainer >  grid_unit_searcher(searcher);
+        TypeContainerVisitor<Trinity::UnitLastSearcher<Trinity::NearestHostileUnitInAttackDistanceCheck>, WorldTypeMapContainer > world_unit_searcher(searcher);
+        TypeContainerVisitor<Trinity::UnitLastSearcher<Trinity::NearestHostileUnitInAttackDistanceCheck>, GridTypeMapContainer >  grid_unit_searcher(searcher);
 
         cell.Visit(p, world_unit_searcher, *GetMap(), *this, ATTACK_DISTANCE > dist ? ATTACK_DISTANCE : dist);
         cell.Visit(p, grid_unit_searcher, *GetMap(), *this, ATTACK_DISTANCE > dist ? ATTACK_DISTANCE : dist);
@@ -2353,8 +2358,8 @@ Player* Creature::SelectNearestPlayer(float distance) const
 {
     Player* target = NULL;
 
-    JadeCore::NearestPlayerInObjectRangeCheck checker(this, distance);
-    JadeCore::PlayerLastSearcher<JadeCore::NearestPlayerInObjectRangeCheck> searcher(this, target, checker);
+    Trinity::NearestPlayerInObjectRangeCheck checker(this, distance);
+    Trinity::PlayerLastSearcher<Trinity::NearestPlayerInObjectRangeCheck> searcher(this, target, checker);
     VisitNearbyObject(distance, searcher);
 
     return target;
@@ -2364,8 +2369,8 @@ Player* Creature::SelectNearestPlayerNotGM(float distance) const
 {
     Player* target = NULL;
 
-    JadeCore::NearestPlayerNotGMInObjectRangeCheck checker(this, distance);
-    JadeCore::PlayerLastSearcher<JadeCore::NearestPlayerNotGMInObjectRangeCheck> searcher(this, target, checker);
+    Trinity::NearestPlayerNotGMInObjectRangeCheck checker(this, distance);
+    Trinity::PlayerLastSearcher<Trinity::NearestPlayerNotGMInObjectRangeCheck> searcher(this, target, checker);
     VisitNearbyObject(distance, searcher);
 
     return target;
@@ -2393,14 +2398,14 @@ void Creature::CallAssistance()
             std::list<Creature*> assistList;
 
             {
-                CellCoord p(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+                CellCoord p(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
                 Cell cell(p);
                 cell.SetNoCreate();
 
-                JadeCore::AnyAssistCreatureInRangeCheck u_check(this, getVictim(), radius);
-                JadeCore::CreatureListSearcher<JadeCore::AnyAssistCreatureInRangeCheck> searcher(this, assistList, u_check);
+                Trinity::AnyAssistCreatureInRangeCheck u_check(this, getVictim(), radius);
+                Trinity::CreatureListSearcher<Trinity::AnyAssistCreatureInRangeCheck> searcher(this, assistList, u_check);
 
-                TypeContainerVisitor<JadeCore::CreatureListSearcher<JadeCore::AnyAssistCreatureInRangeCheck>, GridTypeMapContainer >  grid_creature_searcher(searcher);
+                TypeContainerVisitor<Trinity::CreatureListSearcher<Trinity::AnyAssistCreatureInRangeCheck>, GridTypeMapContainer >  grid_creature_searcher(searcher);
 
                 cell.Visit(p, grid_creature_searcher, *GetMap(), *this, radius);
             }
@@ -2425,14 +2430,14 @@ void Creature::CallForHelp(float radius)
     if (radius <= 0.0f || !getVictim() || isPet() || isCharmed())
         return;
 
-    CellCoord p(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+    CellCoord p(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::CallOfHelpCreatureInRangeDo u_do(this, getVictim(), radius);
-    JadeCore::CreatureWorker<JadeCore::CallOfHelpCreatureInRangeDo> worker(this, u_do);
+    Trinity::CallOfHelpCreatureInRangeDo u_do(this, getVictim(), radius);
+    Trinity::CreatureWorker<Trinity::CallOfHelpCreatureInRangeDo> worker(this, u_do);
 
-    TypeContainerVisitor<JadeCore::CreatureWorker<JadeCore::CallOfHelpCreatureInRangeDo>, GridTypeMapContainer >  grid_creature_searcher(worker);
+    TypeContainerVisitor<Trinity::CreatureWorker<Trinity::CallOfHelpCreatureInRangeDo>, GridTypeMapContainer >  grid_creature_searcher(worker);
 
     cell.Visit(p, grid_creature_searcher, *GetMap(), *this, radius);
 }
@@ -2664,7 +2669,7 @@ void Creature::SetInCombatWithZone()
 {
     if (!CanHaveThreatList())
     {
-        sLog->outError(LOG_FILTER_UNITS, "Creature entry %u call SetInCombatWithZone but creature cannot have threat list.", GetEntry());
+        TC_LOG_ERROR("entities.unit", "Creature entry %u call SetInCombatWithZone but creature cannot have threat list.", GetEntry());
         return;
     }
 
@@ -2672,7 +2677,7 @@ void Creature::SetInCombatWithZone()
 
     if (!map->IsDungeon())
     {
-        sLog->outError(LOG_FILTER_UNITS, "Creature entry %u call SetInCombatWithZone for map (id: %u) that isn't an instance.", GetEntry(), map->GetId());
+        TC_LOG_ERROR("entities.unit", "Creature entry %u call SetInCombatWithZone for map (id: %u) that isn't an instance.", GetEntry(), map->GetId());
         return;
     }
 
@@ -2729,7 +2734,7 @@ void Creature::AddCreatureSpellCooldown(uint32 spellid)
             {
                 if (Player* l_CharmerPlayer = l_Charmer->ToPlayer())
                 {
-                    WorldPacket data(Opcodes::SMSG_SPELL_COOLDOWN, 16 + 2 + 1 + 4 + 4 + 4);
+                    WorldPacket data(SMSG_SPELL_COOLDOWN, 16 + 2 + 1 + 4 + 4 + 4);
                     data.appendPackGUID(GetGUID());
                     data << uint8(CooldownFlags::CooldownFlagNone);
                     data << uint32(1);
@@ -2847,26 +2852,22 @@ void Creature::GetRespawnPosition(float &x, float &y, float &z, float* ori, floa
 
 void Creature::AllLootRemovedFromCorpse()
 {
-    if (!HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE))
-    {
+    if (loot.loot_type != LOOT_SKINNING && !isPet() && GetCreatureTemplate()->SkinLootId && hasLootRecipient())
+        if (LootTemplates_Skinning.HaveLootFor(GetCreatureTemplate()->SkinLootId))
+            SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE);
+
         time_t now = time(NULL);
         if (m_corpseRemoveTime <= now)
             return;
 
-        float decayRate;
-        CreatureTemplate const* cinfo = GetCreatureTemplate();
-
-        decayRate = sWorld->getRate(RATE_CORPSE_DECAY_LOOTED);
-        uint32 diff = uint32((m_corpseRemoveTime - now) * decayRate);
-
-        m_respawnTime -= diff;
-
+        float decayRate = sWorld->getRate(RATE_CORPSE_DECAY_LOOTED);
         // corpse skinnable, but without skinning flag, and then skinned, corpse will despawn next update
-        if (cinfo && cinfo->SkinLootId)
+        if (loot.loot_type == LOOT_SKINNING)
             m_corpseRemoveTime = time(NULL);
         else
-            m_corpseRemoveTime -= diff;
-    }
+            m_corpseRemoveTime = now + m_corpseDelay * decayRate;
+
+        m_respawnTime = m_corpseRemoveTime + m_respawnTime;
 }
 
 uint8 Creature::getLevelForTarget(WorldObject const* target) const
@@ -3038,9 +3039,9 @@ float Creature::GetPetChaseDistance() const
 void Creature::SetPosition(float x, float y, float z, float o)
 {
     // prevent crash when a bad coord is sent by the client
-    if (!JadeCore::IsValidMapCoord(x, y, z, o))
+    if (!Trinity::IsValidMapCoord(x, y, z, o))
     {
-        sLog->outDebug(LOG_FILTER_UNITS, "Creature::SetPosition(%f, %f, %f) .. bad coordinates!", x, y, z);
+        TC_LOG_DEBUG("entities.unit", "Creature::SetPosition(%f, %f, %f) .. bad coordinates!", x, y, z);
         return;
     }
 
@@ -3112,8 +3113,8 @@ Unit* Creature::SelectNearestHostileUnitInAggroRange(bool useLOS) const
     Unit* target = NULL;
 
     {
-        JadeCore::NearestHostileUnitInAggroRangeCheck u_check(this, useLOS);
-        JadeCore::UnitSearcher<JadeCore::NearestHostileUnitInAggroRangeCheck> searcher(this, target, u_check);
+        Trinity::NearestHostileUnitInAggroRangeCheck u_check(this, useLOS);
+        Trinity::UnitSearcher<Trinity::NearestHostileUnitInAggroRangeCheck> searcher(this, target, u_check);
 
         VisitNearbyGridObject(MAX_AGGRO_RADIUS, searcher);
     }
@@ -3155,4 +3156,9 @@ void Creature::DumpGroup()
     l_GroupDump.Dump = l_Dump.str();
 
     AddGroupDump(l_GroupDump);
+}
+
+void Creature::StartPickPocketRefillTimer()
+{
+    _pickpocketLootRestore = time(NULL) + sWorld->getIntConfig(CONFIG_CREATURE_PICKPOCKET_REFILL);
 }

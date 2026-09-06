@@ -9,7 +9,11 @@
 #ifndef TRINITY_CONDITIONMGR_H
 #define TRINITY_CONDITIONMGR_H
 
-#include "Common.h"
+#include "LootMgr.h"
+#include "Define.h"
+#include "Errors.h"
+#include <list>
+#include <map>
 
 class Creature;
 class Player;
@@ -33,7 +37,7 @@ enum ConditionTypes
     CONDITION_DRUNKENSTATE          = 10,                   // DrunkenState     0,             0                  true if player is drunk enough
     CONDITION_WORLD_STATE           = 11,                   // index            value          0                  true if world has the value for the index
     CONDITION_ACTIVE_EVENT          = 12,                   // event_id         0              0                  true if event is active
-    CONDITION_INSTANCE_DATA         = 13,                   // entry            data           0                  true if data is set in current instance
+    CONDITION_INSTANCE_INFO         = 13,                   // entry            data           0                  true if data is set in current instance
     CONDITION_QUEST_NONE            = 14,                   // quest_id         0              0                  true if doesn't have quest saved
     CONDITION_CLASS                 = 15,                   // class            0              0                  true if player's class is equal to class
     CONDITION_RACE                  = 16,                   // race             0              0                  true if player's race is equal to race
@@ -51,7 +55,7 @@ enum ConditionTypes
     CONDITION_QUEST_COMPLETE        = 28,                   // quest_id         0              0                  true if player has quest_id with all objectives complete, but not yet rewarded
     CONDITION_NEAR_CREATURE         = 29,                   // creature entry   distance       0                  true if there is a creature of entry in range
     CONDITION_NEAR_GAMEOBJECT       = 30,                   // gameobject entry distance       0                  true if there is a gameobject of entry in range
-    CONDITION_OBJECT_ENTRY          = 31,                   // TypeID           entry          0                  true if object is type TypeID and the entry is 0 or matches entry of the object
+    CONDITION_OBJECT_ENTRY_GUID     = 31,                   // TypeID           entry          guid               true if object is type TypeID and the entry is 0 or matches entry of the object or matches guid of the object
     CONDITION_TYPE_MASK             = 32,                   // TypeMask         0              0                  true if object is type object's TypeMask matches provided TypeMask
     CONDITION_RELATION_TO           = 33,                   // ConditionTarget  RelationType   0                  true if object is in given relation with object specified by ConditionTarget
     CONDITION_REACTION_TO           = 34,                   // ConditionTarget  rankMask       0                  true if object's reaction matches rankMask object specified by ConditionTarget
@@ -116,9 +120,9 @@ enum ConditionSourceType
     CONDITION_SOURCE_TYPE_QUEST_SHOW_MARK                = 20,
     CONDITION_SOURCE_TYPE_VEHICLE_SPELL                  = 21,
     CONDITION_SOURCE_TYPE_SMART_EVENT                    = 22,
-    CONDITION_SOURCE_TYPE_NPC_VENDOR                     = 23,
-    CONDITION_SOURCE_TYPE_PHASE_DEFINITION               = 24,
-    CONDITION_SOURCE_TYPE_SPELL_PROC                     = 25,
+    CONDITION_SOURCE_TYPE_PHASE_DEFINITION               = 23,
+    CONDITION_SOURCE_TYPE_SPELL_PROC                     = 24,
+    CONDITION_SOURCE_TYPE_NPC_VENDOR                     = 25,
     CONDITION_SOURCE_TYPE_MAX                            = 26  //MAX
 };
 
@@ -141,6 +145,13 @@ enum RelationType
     RELATION_PASSENGER_OF,
     RELATION_CREATED_BY,
     RELATION_MAX
+};
+
+enum InstanceInfo
+{
+    INSTANCE_INFO_DATA = 0,
+    INSTANCE_INFO_DATA64,
+    INSTANCE_INFO_BOSS_STATE
 };
 
 enum
@@ -212,13 +223,17 @@ typedef std::unordered_map<uint32, ConditionContainer> ConditionReferenceContain
 
 class ConditionMgr
 {
-    friend class ACE_Singleton<ConditionMgr, ACE_Null_Mutex>;
-
     private:
         ConditionMgr();
         ~ConditionMgr();
 
     public:
+
+        static ConditionMgr* instance()
+        {
+            static ConditionMgr* instance = new ConditionMgr();
+            return instance;
+        }
         void LoadConditions(bool isReload = false);
         bool isConditionTypeValid(Condition* cond) const;
 
@@ -275,11 +290,11 @@ template <class T> bool CompareValues(ComparisionType type,  T val1, T val2)
             return val1 <= val2;
         default:
             // incorrect parameter
-            ASSERT(false);
+            ABORT();
             return false;
     }
 }
 
-#define sConditionMgr ACE_Singleton<ConditionMgr, ACE_Null_Mutex>::instance()
+#define sConditionMgr ConditionMgr::instance()
 
 #endif

@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -84,19 +84,21 @@
 #include <functional>   ///< std::less
 #include <algorithm>    ///< std::sort, std::includes
 
+#include "Debugging/Errors.h"
+
 #include <atomic>
 #include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <array>
 #include <vector>
 #include "Threading/LockedQueue.h"
-#include "Threading/Threading.h"
+#include "Threading/LockedMap.h"
+#include "Threading/LockedVector.h"
 
-#include <ace/Basic_Types.h>
-#include <ace/Guard_T.h>
-#include <ace/RW_Thread_Mutex.h>
-#include <ace/Thread_Mutex.h>
-#include <ace/Singleton.h>
+// Locking guard macros for read-write locks
+#define TRINITY_READ_GUARD(LockType, Lock) std::shared_lock<LockType> Trinity_ReadGuard(Lock)
+#define TRINITY_WRITE_GUARD(LockType, Lock) std::unique_lock<LockType> Trinity_WriteGuard(Lock)
 
 /// MSVC 18 (2013) have only partial support of thread_local (c++11)
 #ifdef __GNUC__
@@ -108,12 +110,7 @@
 #endif
 
 #if PLATFORM == PLATFORM_WINDOWS
-#  include <ace/config-all.h>
-// XP winver - needed to compile with standard leak check in MemoryLeaks.h
-// uncomment later if needed
-//#define _WIN32_WINNT 0x0501
 #  include <ws2tcpip.h>
-//#undef WIN32_WINNT
 #else
 #  include <sys/types.h>
 #  include <sys/ioctl.h>
@@ -129,10 +126,18 @@
 
 #define I32FMT "%08I32X"
 #define I64FMT "%016I64X"
-#define snprintf _snprintf
 #define atoll _atoi64
 #define vsnprintf _vsnprintf
 #define llabs _abs64
+
+// Fix for newer Visual Studio versions where _vsnprintf is not in std namespace
+#if _MSC_VER >= 1900
+namespace std {
+    inline int _vsnprintf(char* buffer, size_t count, const char* format, va_list argptr) {
+        return ::_vsnprintf(buffer, count, format, argptr);
+    }
+}
+#endif
 
 #else
 
@@ -144,8 +149,6 @@
 #endif
 
 inline float finiteAlways(float f) { return std::isfinite(f) ? f : 0.0f; }
-
-#define atol(a) strtoul( a, NULL, 10)
 
 #define STRINGIZE(a) #a
 
@@ -160,7 +163,7 @@ enum TimeConstants
     IN_MILLISECONDS = 1000
 };
 
- enum AccountTypes
+enum AccountTypes
 {
     SEC_PLAYER                = 0,
     SEC_MODERATOR             = 1,
@@ -169,7 +172,7 @@ enum TimeConstants
     SEC_REALM_LEADER          = 4,
     SEC_GM_LEADER             = 5,
     SEC_ADMINISTRATOR         = 6,
-    SEC_CONSOLE               = 7
+    SEC_CONSOLE               = 7                                  // must be always last in list, accounts must have less security level always also
 };
 
 enum LocaleConstant
@@ -258,18 +261,15 @@ struct GmChat
     std::string message;
 };
 
-
-
 struct ArenaLog
 {
     uint32 timestamp;
     std::string str;
 };
 
-
-extern ACE_Based::LockedQueue<GmCommand*, ACE_Thread_Mutex> GmLogQueue;
-extern ACE_Based::LockedQueue<GmChat*,    ACE_Thread_Mutex> GmChatLogQueue;
-extern ACE_Based::LockedQueue<ArenaLog*,  ACE_Thread_Mutex> ArenaLogQueue;
+extern LockedQueue<GmCommand*> GmLogQueue;
+extern LockedQueue<GmChat*> GmChatLogQueue;
+extern LockedQueue<ArenaLog*> ArenaLogQueue;
 
 // we always use stdlibc++ std::max/std::min, undefine some not C++ standard defines (Win API and some other platforms)
 #ifdef max
@@ -286,21 +286,23 @@ extern ACE_Based::LockedQueue<ArenaLog*,  ACE_Thread_Mutex> ArenaLogQueue;
 
 #define MAX_QUERY_LEN 32*1024
 
-#define TRINITY_GUARD(MUTEX, LOCK) \
-  ACE_Guard< MUTEX > TRINITY_GUARD_OBJECT (LOCK); \
-    if (TRINITY_GUARD_OBJECT.locked() == 0) ASSERT(false);
+#include <memory>
 
-//! For proper implementation of multiple-read, single-write pattern, use
-//! ACE_RW_Mutex as underlying @MUTEX
-# define TRINITY_WRITE_GUARD(MUTEX, LOCK) \
-  ACE_Write_Guard< MUTEX > TRINITY_GUARD_OBJECT (LOCK); \
-    if (TRINITY_GUARD_OBJECT.locked() == 0) ASSERT(false);
+namespace Trinity
+{
+    template<typename T, typename... Args>
+    std::unique_ptr<T> make_unique(Args&&... args)
+    {
+        return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+    }
+}
 
-//! For proper implementation of multiple-read, single-write pattern, use
-//! ACE_RW_Mutex as underlying @MUTEX
-# define TRINITY_READ_GUARD(MUTEX, LOCK) \
-  ACE_Read_Guard< MUTEX > TRINITY_GUARD_OBJECT (LOCK); \
-    if (TRINITY_GUARD_OBJECT.locked() == 0) ASSERT(false);
+class ACE_Stack_Trace
+{
+public:
+    ACE_Stack_Trace() = default;
+    char const* c_str() const { return "<stack trace unavailable>"; }
+};
 
 namespace std
 {

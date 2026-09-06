@@ -58,7 +58,7 @@ static int InsertFileEntry(
     // Fill the file entry
     pFileEntry->EncodingKey  = *(PENCODING_KEY)pbEncodingKey;
     pFileEntry->FileNameHash = CalcFileNameHash(szFileName);
-    pFileEntry->dwFileName   = Array_IndexOf(&pRootHandler->FileNames, szFileName);
+    pFileEntry->dwFileName   = (DWORD)Array_IndexOf(&pRootHandler->FileNames, szFileName);
 
     // Insert the file entry to the map
     assert(Map_FindObject(pRootHandler->pRootMap, &pFileEntry->FileNameHash, NULL) == NULL);
@@ -77,7 +77,7 @@ static int OvrHandler_Insert(
     return InsertFileEntry(pRootHandler, szFileName, pbEncodingKey);
 }
 
-static LPBYTE OvrHandler_Search(TRootHandler_Ovr * pRootHandler, TCascSearch * pSearch, PDWORD /* PtrFileSize */, PDWORD /* PtrLocaleFlags */)
+static LPBYTE OvrHandler_Search(TRootHandler_Ovr * pRootHandler, TCascSearch * pSearch, PDWORD /* PtrFileSize */, PDWORD /* PtrLocaleFlags */, PDWORD /* PtrFileDataId */)
 {
     PCASC_FILE_ENTRY pFileEntry;
 
@@ -107,6 +107,12 @@ static LPBYTE OvrHandler_GetKey(TRootHandler_Ovr * pRootHandler, const char * sz
     ULONGLONG FileNameHash = CalcFileNameHash(szFileName);
 
     return (LPBYTE)Map_FindObject(pRootHandler->pRootMap, &FileNameHash, NULL);
+}
+
+static DWORD OvrHandler_GetFileId(TRootHandler_Ovr * /* pRootHandler */, const char * /* szFileName */)
+{
+  // Not implemented for Overwatch
+  return 0;
 }
 
 static void OvrHandler_Close(TRootHandler_Ovr * pRootHandler)
@@ -139,7 +145,8 @@ int RootHandler_CreateOverwatch(TCascStorage * hs, LPBYTE pbRootFile, DWORD cbRo
     size_t nLength;
     char szOneLine[0x200];
     char szFileName[MAX_PATH+1];
-    DWORD dwFileCountMax = hs->pEncodingMap->TableSize;
+    DWORD dwFileCountMax = (DWORD)hs->pEncodingMap->TableSize;
+    int nFileNameIndex;
     int nError = ERROR_SUCCESS;
 
     // Allocate the root handler object
@@ -154,6 +161,7 @@ int RootHandler_CreateOverwatch(TCascStorage * hs, LPBYTE pbRootFile, DWORD cbRo
     pRootHandler->EndSearch   = (ROOT_ENDSEARCH)OvrHandler_EndSearch;
     pRootHandler->GetKey      = (ROOT_GETKEY)OvrHandler_GetKey;
     pRootHandler->Close       = (ROOT_CLOSE)OvrHandler_Close;
+    pRootHandler->GetFileId   = (ROOT_GETFILEID)OvrHandler_GetFileId;
 
     // Fill-in the flags
     pRootHandler->dwRootFlags |= ROOT_FLAG_HAS_NAMES;
@@ -177,20 +185,26 @@ int RootHandler_CreateOverwatch(TCascStorage * hs, LPBYTE pbRootFile, DWORD cbRo
     pTextFile = ListFile_FromBuffer(pbRootFile, cbRootFile);
     if(pTextFile != NULL)
     {
-        // Skip the first line, containing "#MD5|CHUNK_ID|FILENAME|INSTALLPATH"
-        ListFile_GetNextLine(pTextFile, szOneLine, _maxchars(szOneLine));
-
-        // Parse the next lines
-        while((nLength = ListFile_GetNextLine(pTextFile, szOneLine, _maxchars(szOneLine))) > 0)
+        // Get the initial line, containing variable names
+        nLength = ListFile_GetNextLine(pTextFile, szOneLine, _maxchars(szOneLine));
+        
+        // Determine the index of the "FILENAME" variable
+        nError = GetRootVariableIndex(szOneLine, szOneLine + nLength, "FILENAME", &nFileNameIndex);
+        if(nError == ERROR_SUCCESS)
         {
-            // Parse the line
-            nError = ParseRootFileLine(szOneLine, szOneLine + nLength, &EncodingKey, szFileName, _maxchars(szFileName));
-            if(nError == ERROR_SUCCESS)
+            // Parse the next lines
+            while((nLength = ListFile_GetNextLine(pTextFile, szOneLine, _maxchars(szOneLine))) > 0)
             {
-                InsertFileEntry(pRootHandler, szFileName, KeyBuffer.Value);
+                // Parse the line
+                nError = ParseRootFileLine(szOneLine, szOneLine + nLength, nFileNameIndex, &EncodingKey, szFileName, _maxchars(szFileName));
+                if(nError == ERROR_SUCCESS)
+                {
+                    InsertFileEntry(pRootHandler, szFileName, KeyBuffer.Value);
+                }
             }
         }
 
+        // Free the listfile
         ListFile_Free(pTextFile);
     }
 

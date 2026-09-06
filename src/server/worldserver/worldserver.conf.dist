@@ -58,6 +58,14 @@
 RealmID = 1
 
 #
+#    RealmsStateUpdateDelay
+#        Description: Time (in seconds) between realm list updates.
+#        Default:     10
+#                     0  - (Disabled)
+
+RealmsStateUpdateDelay = 10
+
+#
 #    DataDir
 #        Description: Data directory setting.
 #        Important:   DataDir needs to be quoted, as the string might contain space characters.
@@ -149,11 +157,26 @@ MaxPingTime = 30
 WorldServerPort = 8085
 
 #
+#    InstanceServerPort
+#        Description: TCP port to reach the world server instance connection (6.2.4 ConnectTo).
+#        Default:     8086
+#
+InstanceServerPort = 8086
+
+#
 #    BindIP
 #        Description: Bind world server to IP/hostname
 #        Default:     "0.0.0.0" - (Bind to all IPs on the system)
 
 BindIP = "0.0.0.0"
+
+#
+#    ThreadPool
+#        Description: Number of threads to be used for the global thread pool 
+#                     The thread pool is currently used for the signal handler and remote access
+#        Default:     1
+
+ThreadPool = 1
 
 #
 ###################################################################################################
@@ -162,7 +185,9 @@ BindIP = "0.0.0.0"
 # PERFORMANCE SETTINGS
 #
 #    UseProcessors
-#        Description: Processors mask for Windows based multi-processor systems.
+#        Description: Processors mask for Windows and Linux based multi-processor systems.
+#        Example:     A computer with 2 CPUs:
+#                     1 - 1st CPU only, 2 - 2nd CPU only, 3 - 1st and 2nd CPU, because 1 | 2 is 3
 #        Default:     0  - (Selected by OS)
 #                     1+ - (Bit mask value of selected processors)
 
@@ -170,9 +195,11 @@ UseProcessors = 0
 
 #
 #    ProcessPriority
-#        Description: Process priority setting for Windows based systems.
-#        Default:     1 - (High)
-#                     0 - (Normal)
+#        Description: Process priority setting for Windows and Linux based systems.
+#        Details:     On Linux, a nice value of -15 is used. (requires superuser). 
+#                     On Windows, process is set to HIGH class.
+#        Default:     0 - (Normal)
+#                     1 - (High)
 
 ProcessPriority = 1
 
@@ -896,6 +923,7 @@ AllFlightPaths = 0
 #                     of making them wait while flying.
 #        Default:     0 - (Disabled)
 #                     1 - (Enabled)
+#                     2 - (Enabled, but the player can toggle instant flight off or on at each flight master)
 
 InstantFlightPaths = 0
 
@@ -1537,6 +1565,14 @@ Rate.Creature.Elite.Elite.HP     = 1
 Rate.Creature.Elite.RARE.HP      = 1
 Rate.Creature.Elite.RAREELITE.HP = 1
 Rate.Creature.Elite.WORLDBOSS.HP = 1
+
+#
+#    Creature.PickPocketRefillDelay
+#        Description: Time in seconds that the server will wait before refilling the pickpocket loot 
+#                     for a creature
+#        Default:     600
+
+Creature.PickPocketRefillDelay = 600
 
 #
 #    ListenRange.Say
@@ -2706,6 +2742,14 @@ PvPToken.ItemCount = 1
 NoResetTalentsCost = 0
 
 #
+#    ToggleXP.Cost
+#        Description: Cost of locking/unlocking XP
+#        Default:     100000 - (10 Gold)
+#
+
+ToggleXP.Cost = 100000
+
+#
 #     Guild.AllowMultipleGuildMaster
 #        Description: Allow more than one guild master. Additional Guild Masters must be set using
 #                     the ".guild rank" command.
@@ -2820,8 +2864,10 @@ PlayerDump.DisallowOverwrite = 1
 #                         1 - Prefix Timestamp to the text
 #                         2 - Prefix Log Level to the text
 #                         4 - Prefix Log Filter type to the text
-#                         8 - Append timestamp to the log file name. Format: YYYY-MM-DD_HH-MM-SS (Only used with Type = 2)
-#                        16 - Make a backup of existing file before overwrite (Only used with Mode = w)
+#                         8 - Append timestamp to the log file name. Format: YYYY-MM-DD_HH-MM-SS 
+#                             (Only used with Type = 2)
+#                        16 - Make a backup of existing file before overwrite 
+#                             (Only used with Mode = w)
 #
 #                     Colors (read as optional1 if Type = Console)
 #                         Format: "fatal error warn info debug trace"
@@ -2854,75 +2900,13 @@ Appender.Console=1,3,0
 Appender.Server=2,2,0,Server.log,w
 Appender.GM=2,2,15,gm/gm_%s.log
 Appender.DBErrors=2,2,0,DBErrors.log,w
-Appender.Char=2,2,0,Char.log,w
-Appender.RA=2,2,0,RA.log
-Appender.Warden=2,4,0,Warden.log
-Appender.Chat=0,0,0
-Appender.CharDump=2,2,0,%s.log
-Appender.Arenas=2,2,0,Arena.log
-Appender.SQLDev=2,2,0,SQLDev.log
-Appender.SQLDriver=2,2,0,SQLDriver.log
 Appender.Profiling=2,5,0,Profiling.log,w
-
-#    Appenders
-#        Description: List of Appenders to read from config
-#                     (Using spaces as separator).
-#        Default:     "Console Server GM DBErrors Char RA Warden Chat"
-
-Appenders=Console Server GM DBErrors Char RA Warden Chat CharDump Arenas SQLDev SQLDriver Profiling
 
 #  Logger config values: Given a logger "name"
 #    Logger.name
 #        Description: Defines 'What to log'
-#        Format:      Type,LogLevel,AppenderList
-#                     Type
-#                         0 - Default. Each type that has no config will
-#                             rely on this one. Core will create this logger
-#                             (disabled) if it's not configured
-#                         1 - Units that doesn't fit in other categories
-#                         2 - Pets
-#                         3 - Vehicles
-#                         4 - C++ AI, instance scripts, etc.
-#                         5 - DB AI, such as SAI, EAI, CreatureAI
-#                         6 - DB map scripts
-#                         7 - Network input/output,
-#                             such as packet handlers and netcode logs
-#                         8 - Spellsystem and aurasystem
-#                         9 - Achievement system
-#                        10 - Condition system
-#                        11 - Pool system
-#                        12 - Auction house
-#                        13 - Arena's and battlegrounds
-#                        14 - Outdoor PVP
-#                        15 - Chat system
-#                        16 - LFG system
-#                        17 - Maps, instances (not scripts),
-#                             grids, cells, visibility, etc.
-#                        18 - Player that doesn't fit in other categories.
-#                        19 - Player loading from DB
-#                             (Player::_LoadXXX functions)
-#                        20 - Items
-#                        21 - Player skills (do not confuse with spells)
-#                        22 - Player chat logs
-#                        23 - loot
-#                        24 - guilds
-#                        25 - transports
-#                        26 - SQL. DB errors
-#                        27 - GM Commands
-#                        28 - Remote Access Commands
-#                        29 - Warden
-#                        30 - Authserver
-#                        31 - Worldserver
-#                        32 - Game Events
-#                        33 - Calendar
-#                        34 - Character (Exclusive to log login, logout, create, rename)
-#                        35 - Arenas
-#                        36 - SQL Driver
-#                        37 - SQL Dev
-#                        38 - Player Dump
-#                        39 - Battlefield
-#                        40 - Server Loading
-#                        41 - Opcodes (just id and name sent / received)
+#	     Format: LogLevel,AppenderList
+#
 #                        42 - Custom: Profiling
 #                     LogLevel
 #                         0 - (Disabled)
@@ -2937,29 +2921,96 @@ Appenders=Console Server GM DBErrors Char RA Warden Chat CharDump Arenas SQLDev 
 #                     (Using spaces as separator).
 #
 
-Logger.Root=0,5,Console Server
-Logger.Chat=22,3,Chat
-Logger.DBErrors=26,5,Console Server DBErrors
-Logger.GM=27,3,Console Server GM
-Logger.RA=28,3,RA
-Logger.Warden=29,4,Warden
-Logger.WorldServer=31,3,Console Server
-Logger.Character=34,3,Char
-Logger.Arenas=35,3,Arenas
-Logger.SQLDriver=36,5,SQLDriver
-Logger.SQLDev=37,3,SQLDev
-Logger.CharDump=38,3,CharDump
-Logger.Load=40,3,Console Server
-Logger.Opcodes=41,6,Console Server
-Logger.Profiling=42,5,Console Profiling
+Logger.root=5,Console Server
+Logger.server=3,Console Server
+Logger.commands.gm=3,Console GM
+Logger.sql.sql=5,Console DBErrors
+
+#Logger.achievement=3,Console Server
+#Logger.auctionHouse=3,Console Server
+#Logger.bg.arena=3,Console Server
+#Logger.bg.battlefield=3,Console Server
+#Logger.bg.battleground=3,Console Server
+#Logger.chat.log=3,Console Server
+#Logger.calendar=3,Console Server
+#Logger.chat.system=3,Console Server
+#Logger.cheat=3,Console Server
+#Logger.commands.ra=3,Console Server
+#Logger.condition=3,Console Server
+#Logger.entities.pet=3,Console Server
+#Logger.entities.player.character=3,Console Server
+#Logger.entities.player.dump=3,Console Server
+#Logger.entities.player=3,Console Server
+#Logger.entities.player.items=3,Console Server
+#Logger.entities.player.loading=3,Console Server
+#Logger.entities.player.skills=3,Console Server
+#Logger.entities.transport=3,Console Server
+#Logger.entities.unit=3,Console Server
+#Logger.entities.vehicle=3,Console Server
+#Logger.gameevent=3,Console Server
+#Logger.guild=3,Console Server
+#Logger.lfg=3,Console Server
+#Logger.loot=3,Console Server
+#Logger.maps.script=3,Console Server
+#Logger.maps=3,Console Server
+#Logger.misc=3,Console Server
+#Logger.network=3,Console Server
+#Logger.network.opcode=3,Console Server
+#Logger.network.soap=3,Console Server
+#Logger.outdoorpvp=3,Console Server
+#Logger.pool=3,Console Server
+#Logger.rbac=3,Console Server
+#Logger.scripts=3,Console Server
+#Logger.scripts.ai=3,Console Server
+#Logger.server.bnetserver=3,Console Server
+#Logger.spells=3,Console Server
+#Logger.sql.dev=3,Console Server
+#Logger.sql.driver=3,Console Server
+#Logger.warden=3,Console Server
+#Logger.Profiling=42,5,Console Profiling
 
 #
-#    Loggers
-#        Description: List of Loggers to read from config
-#                     (Using spaces as separator).
-#        Default:     "Root Chat DBErrors GM RA Warden Character Load"
+#    Log.Async.Enable
+#        Description: Enables asyncronous message logging.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
 
-Loggers=Root Chat DBErrors GM RA Warden WorldServer Character Arenas SQLDriver SQLDev CharDump Load Opcodes Profiling
+Log.Async.Enable = 0
+
+#
+###################################################################################################
+
+###################################################################################################
+# PACKET SPOOF PROTECTION SETTINGS
+#
+# These settings determine which action to take when harmful packet spoofing is detected.
+#
+#    PacketSpoof.Policy
+#        Description: Determines the course of action when packet spoofing is detected.
+#        Default:     1 - Log + kick
+#                    0 - Log only ("network")
+#                    2 - Log + kick + ban
+
+PacketSpoof.Policy = 1
+
+#
+#    PacketSpoof.BanMode
+#        Description: If PacketSpoof.Policy equals 2, this will determine the ban mode.
+#        Note: Banning by character not supported for logical reasons.
+#        Default:    0 - Ban Account
+#                    2 - Ban IP
+#
+
+PacketSpoof.BanMode = 0
+
+#
+#    PacketSpoof.BanDuration
+#        Description: Duration of the ban in seconds. Only valid if PacketSpoof.Policy is set to 2.
+#                     Set to 0 for permanent ban.
+#        Default:     86400 seconds (1 day)
+#
+
+PacketSpoof.BanDuration = 86400
 
 #
 ###################################################################################################
@@ -3177,7 +3228,7 @@ DisableRestart = 1
 #        Default:     1 - (Enable)
 
 LootAoe.Enabled = 1
-LastClientBuild = 20779
+LastClientBuild = 21742
 
 #   LogPackets
 #        Description: Print packet exchange (sent/received) to stdout, only works on Windows

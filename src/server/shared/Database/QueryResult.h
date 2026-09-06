@@ -10,6 +10,8 @@
 #define QUERYRESULT_H
 
 #include <memory>
+#include <future>
+#include <chrono>
 #include "Field.h"
 #include "Errors.h"
 
@@ -85,7 +87,7 @@ class PreparedResultSet
         MYSQL_STMT* m_stmt;
         MYSQL_RES* m_metadataResult;    ///< Field metadata, returned by mysql_stmt_result_metadata
 
-        my_bool* m_isNull;
+        bool* m_isNull;
         unsigned long* m_length;
 
         void CleanUp();
@@ -96,6 +98,43 @@ class PreparedResultSet
 };
 
 typedef std::shared_ptr<PreparedResultSet> PreparedQueryResult;
+
+template<typename T>
+class QueryFuture : public std::future<T>
+{
+public:
+    QueryFuture() = default;
+    QueryFuture(QueryFuture&&) noexcept = default;
+    QueryFuture& operator=(QueryFuture&&) noexcept = default;
+    QueryFuture(std::future<T>&& other) noexcept : std::future<T>(std::move(other)) { }
+    QueryFuture& operator=(std::future<T>&& other) noexcept
+    {
+        std::future<T>::operator=(std::move(other));
+        return *this;
+    }
+
+    bool ready() const
+    {
+        return this->valid() && this->wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    }
+
+    void get(T& out)
+    {
+        out = std::future<T>::get();
+    }
+
+    using std::future<T>::get;
+
+    void cancel()
+    {
+        *this = QueryFuture<T>();
+    }
+};
+
+typedef QueryFuture<QueryResult> QueryResultFuture;
+typedef std::promise<QueryResult> QueryResultPromise;
+typedef QueryFuture<PreparedQueryResult> PreparedQueryResultFuture;
+typedef std::promise<PreparedQueryResult> PreparedQueryResultPromise;
 
 #endif
 

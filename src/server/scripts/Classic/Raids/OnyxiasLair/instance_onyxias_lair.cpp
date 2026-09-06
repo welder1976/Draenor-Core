@@ -113,12 +113,12 @@ public:
 				//THIS GOB IS A TRAP - What shall i do? =(
 				//Cast it spell? Copyed Heigan method
 				pFloorEruption->SendCustomAnim(pFloorEruption->GetGoAnimProgress());
-				pFloorEruption->CastSpell(NULL, Difficulty(instance->GetSpawnMode()) == Difficulty::Difficulty10N ? 17731 : 69294); //pFloorEruption->GetGOInfo()->trap.spellId
+				pFloorEruption->CastSpell(NULL, Difficulty(instance->GetSpawnMode()) == Difficulty::RAID_DIFFICULTY_10MAN_NORMAL ? 17731 : 69294); //pFloorEruption->GetGOInfo()->trap.spellId
 
 																																	//Get all immediatly nearby floors
 				std::list<GameObject*> nearFloorList;
-				JadeCore::GameObjectInRangeCheck check(pFloorEruption->GetPositionX(), pFloorEruption->GetPositionY(), pFloorEruption->GetPositionZ(), 15);
-				JadeCore::GameObjectListSearcher<JadeCore::GameObjectInRangeCheck> searcher(pFloorEruption, nearFloorList, check);
+				Trinity::GameObjectInRangeCheck check(pFloorEruption->GetPositionX(), pFloorEruption->GetPositionY(), pFloorEruption->GetPositionZ(), 15);
+				Trinity::GameObjectListSearcher<Trinity::GameObjectInRangeCheck> searcher(pFloorEruption, nearFloorList, check);
 				pFloorEruption->VisitNearbyGridObject(999, searcher);
 				//remove all that are not present on FloorEruptionGUID[1] and update treeLen on each GUID
 				for (std::list<GameObject*>::const_iterator itr = nearFloorList.begin(); itr != nearFloorList.end(); ++itr)

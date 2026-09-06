@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
+//  MILLENIUM-STUDIO
 //  Copyright 2014-2015 Millenium-studio SARL
-// Discord https://discord.gg/CWCF3C9
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -12,68 +12,55 @@
 #include "WorldPacket.h"
 #include "WorldSession.h"
 #include "Player.h"
+#include "Item.h"
 #include "PetBattle.h"
 #include "WildBattlePet.h"
 #include "AchievementMgr.h"
+#include "BattlePetPackets.h"
+#include "DB2Stores.h"
 #include "CellImpl.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+
+namespace
+{
+    WorldPackets::BattlePet::BattlePet BuildJournalPet(BattlePet::Ptr const& pet)
+    {
+        WorldPackets::BattlePet::BattlePet packetPet;
+        BattlePetSpeciesEntry const* species = sBattlePetSpeciesStore.LookupEntry(pet->Species);
+
+        pet->UpdateStats();
+
+        packetPet.Guid = pet->JournalID;
+        packetPet.Species = pet->Species;
+        packetPet.CreatureID = species ? species->CreatureID : 0;
+        packetPet.DisplayID = pet->DisplayModelID;
+        packetPet.Breed = pet->Breed;
+        packetPet.Level = pet->Level;
+        packetPet.Exp = pet->XP;
+        packetPet.Flags = pet->Flags;
+        packetPet.Power = pet->InfoPower;
+        packetPet.Health = pet->Health > pet->InfoMaxHealth ? pet->InfoMaxHealth : pet->Health;
+        packetPet.MaxHealth = pet->InfoMaxHealth;
+        packetPet.Speed = pet->InfoSpeed;
+        packetPet.Quality = pet->Quality;
+        packetPet.Name = pet->Name;
+        return packetPet;
+    }
+}
 
 void WorldSession::SendBattlePetUpdates(bool p_AddedPet)
 {
     if (!m_Player || !m_Player->IsInWorld())
         return;
 
-    std::vector<BattlePet::Ptr> l_Pets = m_Player->GetBattlePets();
+    WorldPackets::BattlePet::BattlePetUpdates packet;
+    packet.PetAdded = p_AddedPet;
 
-    WorldPacket l_Packet(SMSG_BATTLE_PET_UPDATES, 15 * 1024);
-    l_Packet << uint32(l_Pets.size());                                                                      ///< Pets count
+    for (BattlePet::Ptr const& pet : m_Player->GetBattlePets())
+        packet.Pets.push_back(BuildJournalPet(pet));
 
-    for (std::vector<BattlePet::Ptr>::iterator l_It = l_Pets.begin(); l_It != l_Pets.end(); ++l_It)
-    {
-        BattlePet::Ptr l_Pet = (*l_It);
-
-        uint64 l_Guid = l_Pet->JournalID;
-        bool l_HasOwnerInfo = false;
-        BattlePetSpeciesEntry const* l_SpeciesInfo = sBattlePetSpeciesStore.LookupEntry(l_Pet->Species);
-
-        l_Pet->UpdateStats();
-
-        l_Packet.appendPackGUID(l_Guid);                                                                    ///< BattlePetGUID
-        l_Packet << uint32(l_Pet->Species);                                                                 ///< SpeciesID
-        l_Packet << uint32(l_SpeciesInfo ? l_SpeciesInfo->entry : 0);                                       ///< CreatureID
-        l_Packet << uint32(l_Pet->DisplayModelID);                                                          ///< DisplayID
-        l_Packet << uint16(l_Pet->Breed);                                                                   ///< BreedID
-        l_Packet << uint16(l_Pet->Level);                                                                   ///< Level
-        l_Packet << uint16(l_Pet->XP);                                                                      ///< Xp
-        l_Packet << uint16(l_Pet->Flags);                                                                   ///< BattlePetDBFlags
-        l_Packet << int32(l_Pet->InfoPower);                                                                ///< Power
-        l_Packet << int32(l_Pet->Health > l_Pet->InfoMaxHealth ? l_Pet->InfoMaxHealth : l_Pet->Health);     ///< Health
-        l_Packet << int32(l_Pet->InfoMaxHealth);                                                            ///< MaxHealth
-        l_Packet << int32(l_Pet->InfoSpeed);                                                                ///< Speed
-        l_Packet << uint8(l_Pet->Quality);                                                                  ///< BreedQuality
-
-        l_Packet.WriteBits(l_Pet->Name.length(), 7);                                                        ///< CustomName
-        l_Packet.WriteBit(l_HasOwnerInfo);                                                                  ///< HasOwnerInfo
-        l_Packet.WriteBit(l_Pet->Name.empty());                                                             ///< NoRename
-        l_Packet.FlushBits();
-
-        l_Packet.WriteString(l_Pet->Name);
-
-        if (l_HasOwnerInfo)
-        {
-            uint64 l_OwnerGUID = 0;
-
-            l_Packet.appendPackGUID(l_OwnerGUID);                                                           ///< Guid
-            l_Packet << uint32(g_RealmID);                                                                  ///< PlayerVirtualRealm
-            l_Packet << uint32(g_RealmID);                                                                  ///< PlayerNativeRealm
-        }
-    }
-
-    l_Packet.WriteBit(p_AddedPet);                                                                          ///< HasJournalLock
-    l_Packet.FlushBits();
-
-    SendPacket(&l_Packet);
+    SendPacket(packet.Write());
 }
 
 void WorldSession::SendBattlePetTrapLevel()
@@ -81,26 +68,23 @@ void WorldSession::SendBattlePetTrapLevel()
     if (!m_Player || !m_Player->IsInWorld())
         return;
 
-    WorldPacket l_Packet(SMSG_BATTLE_PET_TRAP_LEVEL, 2);
-    l_Packet << uint32(m_Player->GetBattlePetTrapLevel());
-
-    m_Player->GetSession()->SendPacket(&l_Packet);
+    WorldPackets::BattlePet::BattlePetTrapLevel packet;
+    packet.TrapLevel = int16(m_Player->GetBattlePetTrapLevel());
+    SendPacket(packet.Write());
 }
 
 void WorldSession::SendBattlePetJournalLockAcquired()
 {
-    WorldPacket l_Packet(SMSG_BATTLE_PET_JOURNAL_LOCK_ACQUIRED, 0);
-    m_Player->GetSession()->SendPacket(&l_Packet);
-
+    WorldPackets::BattlePet::BattlePetJournalLockAcquired packet;
+    SendPacket(packet.Write());
     m_IsPetBattleJournalLocked = true;
 }
 
 void WorldSession::SendBattlePetJournalLockDenied()
 {
     m_IsPetBattleJournalLocked = false;
-
-    WorldPacket l_Packet(SMSG_BATTLE_PET_JOURNAL_LOCK_DENIED, 0);
-    m_Player->GetSession()->SendPacket(&l_Packet);
+    WorldPackets::BattlePet::BattlePetJournalLockDenied packet;
+    SendPacket(packet.Write());
 }
 
 void WorldSession::SendBattlePetJournal()
@@ -108,106 +92,52 @@ void WorldSession::SendBattlePetJournal()
     if (!m_Player || !m_Player->IsInWorld())
         return;
 
-    std::vector<BattlePet::Ptr>     l_Pets              = m_Player->GetBattlePets();
-    uint32                          l_UnlockedSlotCount = m_Player->GetUnlockedPetBattleSlot();
-    BattlePet::Ptr                * l_PetSlots          = m_Player->GetBattlePetCombatTeam();
+    std::vector<BattlePet::Ptr> pets = m_Player->GetBattlePets();
+    uint32 unlockedSlotCount = m_Player->GetUnlockedPetBattleSlot();
+    BattlePet::Ptr* petSlots = m_Player->GetBattlePetCombatTeam();
 
-    if (l_UnlockedSlotCount > 0)
+    if (unlockedSlotCount > 0)
         m_Player->SetFlag(PLAYER_FIELD_PLAYER_FLAGS, PLAYER_FLAGS_HAS_BATTLE_PET_TRAINING);
 
-    WorldPacket l_Packet(SMSG_BATTLE_PET_JOURNAL, 15 * 1024);
-    l_Packet << uint16(m_Player->GetBattlePetTrapLevel());                                                  ///< Trap level
-    l_Packet << uint32(MAX_PETBATTLE_SLOTS);                                                                                  ///< Slots count
-    l_Packet << uint32(l_Pets.size());                                                                      ///< Pets count
+    WorldPackets::BattlePet::BattlePetJournal packet;
+    packet.Trap = uint16(m_Player->GetBattlePetTrapLevel());
+    packet.HasJournalLock = true;
 
-    for (uint32 l_I = 0; l_I < MAX_PETBATTLE_SLOTS; l_I++)
+    for (uint32 i = 0; i < MAX_PETBATTLE_SLOTS; ++i)
     {
-        uint64 l_Guid = 0;
-
-        //bool l_IsLocked = false;
-
-        //if (m_Player->HasBattlePetTraining() && (l_I + 1) <= l_UnlockedSlotCount)
-        //    l_IsLocked = false;
-
-        if (l_PetSlots[l_I])
-            l_Guid = l_PetSlots[l_I]->JournalID;
-
-        l_Packet.appendPackGUID(l_Guid);                                                                    ///< BattlePetGUID
-        l_Packet << uint32(0);                                                                              ///< CollarID
-        l_Packet << uint8(l_I);                                                                             ///< SlotIndex
-        l_Packet.WriteBit(!((l_I + 1) <= l_UnlockedSlotCount));                                             ///< Locked
-        l_Packet.FlushBits();
+        WorldPackets::BattlePet::BattlePetSlot slot;
+        slot.Index = uint8(i);
+        slot.Locked = !((i + 1) <= unlockedSlotCount);
+        if (petSlots[i])
+            slot.Pet.Guid = petSlots[i]->JournalID;
+        packet.Slots.push_back(slot);
     }
 
-    for (std::vector<BattlePet::Ptr>::iterator l_It = l_Pets.begin(); l_It != l_Pets.end(); ++l_It)
-    {
-        BattlePet::Ptr l_Pet = (*l_It);
+    for (BattlePet::Ptr const& pet : pets)
+        packet.Pets.push_back(BuildJournalPet(pet));
 
-        uint64 l_Guid = l_Pet->JournalID;
-        bool l_HasOwnerInfo = false;
-        BattlePetSpeciesEntry const* l_SpeciesInfo = sBattlePetSpeciesStore.LookupEntry(l_Pet->Species);
-
-        l_Pet->UpdateStats();
-
-        l_Packet.appendPackGUID(l_Guid);                                                                    ///< BattlePetGUID
-        l_Packet << uint32(l_Pet->Species);                                                                 ///< SpeciesID
-        l_Packet << uint32(l_SpeciesInfo ? l_SpeciesInfo->entry : 0);                                       ///< CreatureID
-        l_Packet << uint32(l_Pet->DisplayModelID);                                                          ///< DisplayID
-        l_Packet << uint16(l_Pet->Breed);                                                                   ///< BreedID
-        l_Packet << uint16(l_Pet->Level);                                                                   ///< Level
-        l_Packet << uint16(l_Pet->XP);                                                                      ///< Xp
-        l_Packet << uint16(l_Pet->Flags);                                                                   ///< BattlePetDBFlags
-        l_Packet << int32(l_Pet->InfoPower);                                                                ///< Power
-        l_Packet << int32(l_Pet->Health > l_Pet->InfoMaxHealth ? l_Pet->InfoMaxHealth : l_Pet->Health);     ///< Health
-        l_Packet << int32(l_Pet->InfoMaxHealth);                                                            ///< MaxHealth
-        l_Packet << int32(l_Pet->InfoSpeed);                                                                ///< Speed
-        l_Packet << uint8(l_Pet->Quality);                                                                  ///< BreedQuality
-
-        l_Packet.WriteBits(l_Pet->Name.length(), 7);                                                        ///< CustomName
-        l_Packet.WriteBit(l_HasOwnerInfo);                                                                  ///< HasOwnerInfo
-        l_Packet.WriteBit(l_Pet->Name.empty());                                                             ///< NoRename
-        l_Packet.FlushBits();
-
-        l_Packet.WriteString(l_Pet->Name);
-
-        if (l_HasOwnerInfo)
-        {
-            uint64 l_OwnerGUID = 0;
-
-            l_Packet.appendPackGUID(l_OwnerGUID);                                                           ///< Guid
-            l_Packet << uint32(g_RealmID);                                                                  ///< PlayerVirtualRealm
-            l_Packet << uint32(g_RealmID);                                                                  ///< PlayerNativeRealm
-        }
-    }
-
-    l_Packet.WriteBit(true);                                                                                ///< HasJournalLock
-    l_Packet.FlushBits();
-
-    SendPacket(&l_Packet);
+    SendPacket(packet.Write());
 }
 
 void WorldSession::SendBattlePetDeleted(uint64 p_BattlePetGUID)
 {
-    WorldPacket l_Packet(SMSG_BATTLE_PET_DELETED, 2 + 16);
-    l_Packet.appendPackGUID(p_BattlePetGUID);
-
-    m_Player->GetSession()->SendPacket(&l_Packet);
+    WorldPackets::BattlePet::BattlePetDeleted packet;
+    packet.PetGuid = p_BattlePetGUID;
+    SendPacket(packet.Write());
 }
 
 void WorldSession::SendBattlePetRevoked(uint64 p_BattlePetGUID)
 {
-    WorldPacket l_Packet(SMSG_BATTLE_PET_REVOKED, 2 + 16);
-    l_Packet.appendPackGUID(p_BattlePetGUID);
-
-    m_Player->GetSession()->SendPacket(&l_Packet);
+    WorldPackets::BattlePet::GuidData packet(SMSG_BATTLE_PET_REVOKED);
+    packet.BattlePetGUID = p_BattlePetGUID;
+    SendPacket(packet.Write());
 }
 
 void WorldSession::SendBattlePetRestored(uint64 p_BattlePetGUID)
 {
-    WorldPacket l_Packet(SMSG_BATTLE_PET_RESTORED, 2 + 16);
-    l_Packet.appendPackGUID(p_BattlePetGUID);
-
-    m_Player->GetSession()->SendPacket(&l_Packet);
+    WorldPackets::BattlePet::GuidData packet(SMSG_BATTLE_PET_RESTORED);
+    packet.BattlePetGUID = p_BattlePetGUID;
+    SendPacket(packet.Write());
 }
 
 void WorldSession::SendBattlePetsHealed()
@@ -224,12 +154,10 @@ void WorldSession::SendBattlePetLicenseChanged()
 
 void WorldSession::SendBattlePetError(uint32 p_Result, uint32 p_CreatureID)
 {
-    WorldPacket l_Packet(SMSG_BATTLE_PET_ERROR, 1 + 4);
-    l_Packet.WriteBits(p_Result, 4);
-    l_Packet.FlushBits();
-    l_Packet << uint32(p_CreatureID);
-
-    m_Player->GetSession()->SendPacket(&l_Packet);
+    WorldPackets::BattlePet::BattlePetError packet;
+    packet.Result = uint8(p_Result);
+    packet.CreatureID = p_CreatureID;
+    SendPacket(packet.Write());
 }
 
 void WorldSession::SendBattlePetCageDateError(uint32 p_SecondsUntilCanCage)
@@ -276,39 +204,21 @@ void WorldSession::HandleBattlePetQueryName(WorldPacket& p_RecvData)
         }
     }
 
-    WorldPacket l_Packet(SMSG_QUERY_BATTLE_PET_NAME_RESPONSE, 0x40);
-
-    l_Packet.appendPackGUID(l_JournalGuid);
-    l_Packet << uint32(l_Creature->GetEntry());
-    l_Packet << uint32(l_Creature->GetUInt32Value(UNIT_FIELD_BATTLE_PET_COMPANION_NAME_TIMESTAMP));
-    l_Packet.WriteBit(l_HaveCustomName);
-
+    WorldPackets::BattlePet::QueryResponse packet;
+    packet.BattlePetID = l_JournalGuid;
+    packet.CreatureID = l_Creature->GetEntry();
+    packet.Timestamp = l_Creature->GetUInt32Value(UNIT_FIELD_BATTLE_PET_COMPANION_NAME_TIMESTAMP);
+    packet.Allow = l_HaveCustomName;
     if (l_HaveCustomName)
+        packet.Name = l_Creature->GetName();
+    packet.HasDeclined = l_HaveDeclinedNames;
+    if (l_BattlePet)
     {
-        l_Packet.WriteBits(l_HaveCustomName ? strlen(l_Creature->GetName()) : 0, 8);
-        l_Packet.WriteBit(l_HaveDeclinedNames);
-
-        for (uint32 l_I = 0; l_I < MAX_DECLINED_NAME_CASES; ++l_I)
-            l_Packet.WriteBits(l_BattlePet ? l_BattlePet->DeclinedNames[l_I].size() : 0, 7);
+        for (uint32 i = 0; i < MAX_DECLINED_NAME_CASES; ++i)
+            packet.DeclinedNames[i] = l_BattlePet->DeclinedNames[i];
     }
 
-    l_Packet.FlushBits();
-
-    if (l_HaveCustomName)
-    {
-        l_Packet.WriteString(l_Creature->GetName());
-
-        for (uint32 l_I = 0; l_I < MAX_DECLINED_NAME_CASES; ++l_I)
-            l_Packet.WriteString(l_BattlePet ? l_BattlePet->DeclinedNames[l_I] : "");
-    }
-
-    m_Player->GetSession()->SendPacket(&l_Packet);
-}
-
-/// [INTERNAL]
-void WorldSession::HandleBattlePetsReconvert(WorldPacket& /*p_RecvData*/)
-{
-    /// Internal handler
+    SendPacket(packet.Write());
 }
 
 void WorldSession::HandleBattlePetUpdateNotify(WorldPacket& p_RecvData)
@@ -321,10 +231,6 @@ void WorldSession::HandleBattlePetUpdateNotify(WorldPacket& p_RecvData)
 
 void WorldSession::HandleBattlePetRequestJournalLock(WorldPacket& /*p_RecvData*/)
 {
-    if (m_IsPetBattleJournalLocked)
-        SendBattlePetJournalLockAcquired();
-    else
-        SendBattlePetJournalLockDenied();
 }
 
 void WorldSession::HandleBattlePetRequestJournal(WorldPacket& /*p_RecvData*/)
@@ -337,7 +243,56 @@ void WorldSession::HandleBattlePetDeletePet(WorldPacket& p_RecvData)
     uint64 l_BattlePetGUID;
     p_RecvData.readPackGUID(l_BattlePetGUID);
 
-    /// @TODO
+    if (!m_Player || !m_Player->IsInWorld())
+        return;
+
+    // Find the battle pet
+    BattlePet::Ptr l_BattlePet = m_Player->GetBattlePet(l_BattlePetGUID);
+    if (!l_BattlePet)
+        return;
+
+    // Remove from combat team if it's there
+    std::shared_ptr<BattlePet>* l_PetSlots = m_Player->GetBattlePetCombatTeam();
+    for (size_t l_I = 0; l_I < MAX_PETBATTLE_SLOTS; ++l_I)
+    {
+        if (l_PetSlots[l_I] && l_PetSlots[l_I]->JournalID == l_BattlePetGUID)
+        {
+            l_PetSlots[l_I] = nullptr;
+            break;
+        }
+    }
+
+    // Unsummon if currently summoned
+    if (m_Player->GetSummonedBattlePet() && 
+        m_Player->GetSummonedBattlePet()->GetGuidValue(UNIT_FIELD_BATTLE_PET_COMPANION_GUID) == l_BattlePetGUID)
+    {
+        m_Player->UnsummonCurrentBattlePetIfAny(false);
+    }
+
+    // Remove from player's pet collection
+    std::vector<BattlePet::Ptr>& l_BattlePets = m_Player->m_BattlePets;
+    for (auto it = l_BattlePets.begin(); it != l_BattlePets.end(); ++it)
+    {
+        if (*it && (*it)->JournalID == l_BattlePetGUID)
+        {
+            // Delete from database
+            SQLTransaction l_Transaction = LoginDatabase.BeginTransaction();
+            PreparedStatement* l_Stmt = LoginDatabase.GetPreparedStatement(LOGIN_DEL_BATTLE_PET);
+            l_Stmt->setUInt64(0, l_BattlePetGUID);
+            l_Stmt->setUInt32(1, GetAccountId());
+            l_Transaction->Append(l_Stmt);
+            LoginDatabase.CommitTransaction(l_Transaction);
+
+            l_BattlePets.erase(it);
+            break;
+        }
+    }
+
+    // Update combat team
+    m_Player->UpdateBattlePetCombatTeam();
+
+    // Send updates to client
+    SendBattlePetUpdates(false);
 }
 
 void WorldSession::HandleBattlePetDeletePetCheat(WorldPacket& p_RecvData)
@@ -345,13 +300,63 @@ void WorldSession::HandleBattlePetDeletePetCheat(WorldPacket& p_RecvData)
     uint64 l_BattlePetGUID;
     p_RecvData.readPackGUID(l_BattlePetGUID);
 
-    /// @TODO
-}
+    if (!m_Player || !m_Player->IsInWorld())
+        return;
 
-/// [INTERNAL]
-void WorldSession::HandleBattlePetDeleteJournal(WorldPacket& /*p_RecvData*/)
-{
-    /// Internal handler
+    // Check if player has GM permissions
+    if (!m_Player->isGameMaster())
+        return;
+
+    // Find the battle pet
+    BattlePet::Ptr l_BattlePet = m_Player->GetBattlePet(l_BattlePetGUID);
+    if (!l_BattlePet)
+        return;
+
+    // Remove from combat team if it's there
+    std::shared_ptr<BattlePet>* l_PetSlots = m_Player->GetBattlePetCombatTeam();
+    for (size_t l_I = 0; l_I < MAX_PETBATTLE_SLOTS; ++l_I)
+    {
+        if (l_PetSlots[l_I] && l_PetSlots[l_I]->JournalID == l_BattlePetGUID)
+        {
+            l_PetSlots[l_I] = nullptr;
+            break;
+        }
+    }
+
+    // Unsummon if currently summoned
+    if (m_Player->GetSummonedBattlePet() && 
+        m_Player->GetSummonedBattlePet()->GetGuidValue(UNIT_FIELD_BATTLE_PET_COMPANION_GUID) == l_BattlePetGUID)
+    {
+        m_Player->UnsummonCurrentBattlePetIfAny(false);
+    }
+
+    // Remove from player's pet collection
+    std::vector<BattlePet::Ptr>& l_BattlePets = m_Player->m_BattlePets;
+    for (auto it = l_BattlePets.begin(); it != l_BattlePets.end(); ++it)
+    {
+        if (*it && (*it)->JournalID == l_BattlePetGUID)
+        {
+            // Delete from database (GM command - no account restriction)
+            SQLTransaction l_Transaction = LoginDatabase.BeginTransaction();
+            PreparedStatement* l_Stmt = LoginDatabase.GetPreparedStatement(LOGIN_DEL_BATTLE_PET_CHEAT);
+            l_Stmt->setUInt64(0, l_BattlePetGUID);
+            l_Transaction->Append(l_Stmt);
+            LoginDatabase.CommitTransaction(l_Transaction);
+
+            l_BattlePets.erase(it);
+            break;
+        }
+    }
+
+    // Update combat team
+    m_Player->UpdateBattlePetCombatTeam();
+
+    // Send updates to client
+    SendBattlePetUpdates(false);
+
+    // Log GM action
+    TC_LOG_INFO("entities.player", "GM %s (GUID: %u) deleted battle pet %u", 
+        m_Player->GetName(), m_Player->GetGUIDLow(), l_BattlePetGUID);
 }
 
 void WorldSession::HandleBattlePetModifyName(WorldPacket& p_RecvData)
@@ -360,15 +365,12 @@ void WorldSession::HandleBattlePetModifyName(WorldPacket& p_RecvData)
     uint64          l_PetJournalID;
     bool            l_HaveDeclinedNames = false;
     uint32          l_NameLenght        = 0;
-    std::string     l_Name;
 
     uint32 l_DeclinedNameLens[MAX_DECLINED_NAME_CASES];
 
     p_RecvData.readPackGUID(l_PetJournalID);
     l_NameLenght        = p_RecvData.ReadBits(7);
     l_HaveDeclinedNames = p_RecvData.ReadBit();
-
-    l_Name = p_RecvData.ReadString(l_NameLenght);
 
     if (l_HaveDeclinedNames)
     {
@@ -380,6 +382,8 @@ void WorldSession::HandleBattlePetModifyName(WorldPacket& p_RecvData)
         for (size_t l_I = 0; l_I < MAX_DECLINED_NAME_CASES; ++l_I)
             l_DeclinedNames.name[l_I] = p_RecvData.ReadString(l_DeclinedNameLens[l_I]);
     }
+
+    std::string l_Name = p_RecvData.ReadString(l_NameLenght);
 
     PetNameInvalidReason l_NameInvalidReason = sObjectMgr->CheckPetName(l_Name);
     if (l_NameInvalidReason != PET_NAME_SUCCESS)
@@ -433,12 +437,6 @@ void WorldSession::HandleBattlePetSummon(WorldPacket& recvData)
     }
 }
 
-/// [INTERNAL]
-void WorldSession::HandleBattlePetSetLevel(WorldPacket& /*p_RecvData*/)
-{
-    /// Internal handler
-}
-
 void WorldSession::HandleBattlePetSetBattleSlot(WorldPacket& p_RecvData)
 {
     if (m_IsPetBattleJournalLocked)
@@ -471,12 +469,6 @@ void WorldSession::HandleBattlePetSetBattleSlot(WorldPacket& p_RecvData)
     SendPetBattleSlotUpdates(false);
 }
 
-/// [INTERNAL]
-void WorldSession::HandleBattlePetSetCollar(WorldPacket& /*p_RecvData*/)
-{
-    /// Internal handler
-}
-
 void WorldSession::HandleBattlePetSetFlags(WorldPacket& p_RecvData)
 {
     uint64 l_PetJournalID;
@@ -499,25 +491,91 @@ void WorldSession::HandleBattlePetSetFlags(WorldPacket& p_RecvData)
     }
 }
 
-/// [INTERNAL]
-void WorldSession::HandleBattlePetsRestoreHealth(WorldPacket& /*p_RecvData*/)
+void WorldSession::HandleBattlePetCage(WorldPacket& p_RecvData)
 {
-    /// Internal handler
-}
+    uint64 l_BattlePetGUID;
+    p_RecvData.readPackGUID(l_BattlePetGUID);
 
-/// [INTERNAL]
-void WorldSession::HandleBattlePetAdd(WorldPacket& /*p_RecvData*/)
-{
-    /// Internal handler
-}
+    if (!m_Player || !m_Player->IsInWorld())
+        return;
 
-/// [INTERNAL]
-void WorldSession::HandleBattlePetSetQualityCheat(WorldPacket& /*p_RecvData*/)
-{
-    /// Internal handler
-}
+    // Unsummon if currently summoned
+    if (m_Player->m_SummonSlot[SUMMON_SLOT_MINIPET])
+    {
+        Creature* l_OldSummon = m_Player->GetMap()->GetCreature(m_Player->m_SummonSlot[SUMMON_SLOT_MINIPET]);
+        if (l_OldSummon && l_OldSummon->isSummon() && l_OldSummon->GetGuidValue(UNIT_FIELD_BATTLE_PET_COMPANION_GUID) == l_BattlePetGUID)
+            l_OldSummon->ToTempSummon()->UnSummon();
+    }
 
-void WorldSession::HandleBattlePetCage(WorldPacket& /*p_RecvData*/)
-{
-    /// @TODO
+    // Find the battle pet
+    BattlePet::Ptr l_BattlePet = m_Player->GetBattlePet(l_BattlePetGUID);
+    if (!l_BattlePet)
+        return;
+
+    // Get species info
+    BattlePetSpeciesEntry const* l_SpeciesEntry = sBattlePetSpeciesStore.LookupEntry(l_BattlePet->Species);
+    if (!l_SpeciesEntry)
+        return;
+
+    // Check if pet can be traded (cageable)
+    if ((l_SpeciesEntry->Flags & BATTLEPET_SPECIES_FLAG_CAGEABLE) == 0)
+        return;
+
+    // if (petInfo->SaveInfo == STATE_DELETED) - This check is not available in Draenor-Core
+
+    // Use species item ID for cage
+    uint32 l_ItemId = ITEM_BATTLE_PET_CAGE_ID;
+    uint32 l_Count = 1;
+    uint32 l_NoSpaceForCount = 0;
+    ItemPosCountVec l_Dest;
+    InventoryResult l_Msg = m_Player->CanStoreNewItem(NULL_BAG, NULL_SLOT, l_Dest, l_ItemId, l_Count, &l_NoSpaceForCount);
+    if (l_Msg != EQUIP_ERR_OK)
+        l_Count -= l_NoSpaceForCount;
+
+    if (l_Count == 0 || l_Dest.empty())
+        return;
+
+    // Create dynamic data for pet modifiers (if supported)
+    uint32 l_DynData = 0;
+    l_DynData |= l_BattlePet->Quality;
+    l_DynData |= uint32(l_BattlePet->Quality << 24);
+
+    Item* l_Item = m_Player->StoreNewItem(l_Dest, l_ItemId, true, 0);
+    if (!l_Item)                                               // prevent crash
+        return;
+
+    // Set item modifiers if supported
+    // Note: ITEM_MODIFIER_BATTLE_PET_* constants don't exist in this codebase
+    // The item will be created with basic species data
+
+    m_Player->SendNewItem(l_Item, 1, false, true);
+
+    // Remove spell if pet has one
+    if (l_SpeciesEntry->SummonSpellID)
+        m_Player->removeSpell(l_SpeciesEntry->SummonSpellID);
+
+    // Remove battle pet from collection
+    std::vector<BattlePet::Ptr>& l_BattlePets = m_Player->m_BattlePets;
+    for (auto it = l_BattlePets.begin(); it != l_BattlePets.end(); ++it)
+    {
+        if (*it && (*it)->JournalID == l_BattlePetGUID)
+        {
+            // Delete from database
+            SQLTransaction l_Transaction = LoginDatabase.BeginTransaction();
+            PreparedStatement* l_Stmt = LoginDatabase.GetPreparedStatement(LOGIN_DEL_BATTLE_PET);
+            l_Stmt->setUInt64(0, l_BattlePetGUID);
+            l_Stmt->setUInt32(1, GetAccountId());
+            l_Transaction->Append(l_Stmt);
+            LoginDatabase.CommitTransaction(l_Transaction);
+
+            l_BattlePets.erase(it);
+            break;
+        }
+    }
+
+    // Update combat team
+    m_Player->UpdateBattlePetCombatTeam();
+
+    // Send battle pet deleted packet
+    SendBattlePetDeleted(l_BattlePetGUID);
 }

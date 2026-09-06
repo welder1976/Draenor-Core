@@ -15,13 +15,14 @@
 #include "Log.h"
 #include "ObjectMgr.h"
 #include "AutoPtr.h"
+#include <mutex>
 
 namespace WeatherMgr
 {
 
 namespace
 {
-    typedef std::unordered_map<uint32, JadeCore::AutoPtr<Weather, ACE_Null_Mutex> > WeatherMap;
+    typedef std::unordered_map<uint32, Trinity::AutoPtr<Weather, std::mutex> > WeatherMap;
     typedef std::unordered_map<uint32, WeatherData> WeatherZoneMap;
 
     WeatherMap m_weathers;
@@ -88,7 +89,7 @@ void LoadWeatherData()
 
     if (!result)
     {
-        sLog->outError(LOG_FILTER_SERVER_LOADING, ">> Loaded 0 weather definitions. DB table `game_weather` is empty.");
+        TC_LOG_ERROR("server.loading", ">> Loaded 0 weather definitions. DB table `game_weather` is empty.");
 
         return;
     }
@@ -110,19 +111,19 @@ void LoadWeatherData()
             if (wzc.data[season].rainChance > 100)
             {
                 wzc.data[season].rainChance = 25;
-                sLog->outError(LOG_FILTER_SQL, "Weather for zone %u season %u has wrong rain chance > 100%%", zone_id, season);
+                TC_LOG_ERROR("sql.sql", "Weather for zone %u season %u has wrong rain chance > 100%%", zone_id, season);
             }
 
             if (wzc.data[season].snowChance > 100)
             {
                 wzc.data[season].snowChance = 25;
-                sLog->outError(LOG_FILTER_SQL, "Weather for zone %u season %u has wrong snow chance > 100%%", zone_id, season);
+                TC_LOG_ERROR("sql.sql", "Weather for zone %u season %u has wrong snow chance > 100%%", zone_id, season);
             }
 
             if (wzc.data[season].stormChance > 100)
             {
                 wzc.data[season].stormChance = 25;
-                sLog->outError(LOG_FILTER_SQL, "Weather for zone %u season %u has wrong storm chance > 100%%", zone_id, season);
+                TC_LOG_ERROR("sql.sql", "Weather for zone %u season %u has wrong storm chance > 100%%", zone_id, season);
             }
         }
 
@@ -132,7 +133,7 @@ void LoadWeatherData()
     }
     while (result->NextRow());
 
-    sLog->outInfo(LOG_FILTER_SERVER_LOADING, ">> Loaded %u weather definitions in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
+    TC_LOG_INFO("server.loading", ">> Loaded %u weather definitions in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
 
 }
 

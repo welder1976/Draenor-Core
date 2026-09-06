@@ -44,8 +44,21 @@ set(TOMCRYPT_FILES
     src/libtomcrypt/src/misc/crypt_libc.c
 )
 
-include_directories(${CMAKE_SOURCE_DIR}/dep)
-
 add_library(casc STATIC ${SRC_FILES} ${TOMCRYPT_FILES})
 
-set_property(TARGET casc PROPERTY FOLDER "dep")
+target_include_directories(casc
+    PUBLIC
+      ${CMAKE_CURRENT_SOURCE_DIR}/src
+    PRIVATE
+      ${CMAKE_SOURCE_DIR}/dep)
+
+target_compile_definitions(casc PUBLIC __SYS_ZLIB CASCLIB_NO_AUTO_LINK_LIBRARY CASCLIB_NODEBUG)
+
+target_link_libraries(casc
+  PUBLIC
+    zlib)
+
+set_target_properties(casc
+  PROPERTIES
+    FOLDER
+      "dep")

@@ -344,7 +344,7 @@ class npc_gara_jal_s_soul : public CreatureScript
                             }
                         }
 
-                        l_BossList.sort(JadeCore::HealthPctOrderPred(false));
+                        l_BossList.sort(Trinity::HealthPctOrderPred(false));
                         l_EntryToPossess = l_BossList.front()->GetEntry();
                     }
 
@@ -441,7 +441,7 @@ class npc_gara_jal_s_soul : public CreatureScript
 
                         if (!playerList.empty())
                         {
-                            JadeCore::RandomResizeList(playerList, 1);
+                            Trinity::RandomResizeList(playerList, 1);
 
                             if (Player* l_Player = playerList.front())
                             {
@@ -584,17 +584,8 @@ class boss_king_malakk : public CreatureScript
                                         if (l_DungeonID != eMiscs::ToTFirstPart)
                                             continue;
 
-                                        if (!me || l_Player->IsAtGroupRewardDistance(me))
-                                            sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
-
                                         if (l_Assigned)
                                             continue;
-
-                                        if (Group* l_Group = l_Player->GetGroup())
-                                        {
-                                            l_Assigned = true;
-                                            sLFGMgr->AutomaticLootAssignation(l_KillCredit, l_Group);
-                                        }
 
                                         /// For first LFR part, this door should not be opened
                                         if (GameObject* l_Door = l_KillCredit->FindNearestGameObject(eMiscs::LastDoor, 200.0f))
@@ -918,17 +909,8 @@ class boss_kazra_jin : public CreatureScript
                                         if (l_DungeonID != eMiscs::ToTFirstPart)
                                             continue;
 
-                                        if (!me || l_Player->IsAtGroupRewardDistance(me))
-                                            sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
-
                                         if (l_Assigned)
                                             continue;
-
-                                        if (Group* l_Group = l_Player->GetGroup())
-                                        {
-                                            l_Assigned = true;
-                                            sLFGMgr->AutomaticLootAssignation(l_KillCredit, l_Group);
-                                        }
 
                                         /// For first LFR part, this door should not be opened
                                         if (GameObject* l_Door = l_KillCredit->FindNearestGameObject(eMiscs::LastDoor, 200.0f))
@@ -1388,17 +1370,8 @@ class boss_sul_the_sandcrawler : public CreatureScript
                                     if (l_DungeonID != eMiscs::ToTFirstPart)
                                         continue;
 
-                                    if (!me || l_Player->IsAtGroupRewardDistance(me))
-                                        sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
-
                                     if (l_Assigned)
                                         continue;
-
-                                    if (Group* l_Group = l_Player->GetGroup())
-                                    {
-                                        l_Assigned = true;
-                                        sLFGMgr->AutomaticLootAssignation(l_KillCredit, l_Group);
-                                    }
 
                                     /// For first LFR part, this door should not be opened
                                     if (GameObject* l_Door = l_KillCredit->FindNearestGameObject(eMiscs::LastDoor, 200.0f))
@@ -1951,17 +1924,8 @@ class boss_high_priestress_mar_li : public CreatureScript
                                         if (l_DungeonID != eMiscs::ToTFirstPart)
                                             continue;
 
-                                        if (!me || l_Player->IsAtGroupRewardDistance(me))
-                                            sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
-
                                         if (l_Assigned)
                                             continue;
-
-                                        if (Group* l_Group = l_Player->GetGroup())
-                                        {
-                                            l_Assigned = true;
-                                            sLFGMgr->AutomaticLootAssignation(l_KillCredit, l_Group);
-                                        }
 
                                         /// For first LFR part, this door should not be opened
                                         if (GameObject* l_Door = l_KillCredit->FindNearestGameObject(eMiscs::LastDoor, 200.0f))
@@ -2419,7 +2383,7 @@ class mob_shadowed_lua_spirit : public CreatureScript
                             if(playerList.empty())
                                 break;
 
-                            JadeCore::RandomResizeList(playerList, 1);
+                            Trinity::RandomResizeList(playerList, 1);
 
                             if (Player* target = playerList.front())
                             {

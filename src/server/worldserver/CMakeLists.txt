@@ -11,7 +11,6 @@
 file(GLOB_RECURSE sources_CommandLine CommandLine/*.cpp CommandLine/*.h)
 file(GLOB_RECURSE sources_RemoteAccess RemoteAccess/*.cpp RemoteAccess/*.h)
 file(GLOB_RECURSE sources_TCSoap TCSoap/*.cpp TCSoap/*.h)
-file(GLOB_RECURSE sources_WorldThread WorldThread/*.cpp WorldThread/*.h)
 file(GLOB sources_localdir *.cpp *.h)
 
 if (USE_COREPCH)
@@ -31,7 +30,6 @@ set(worldserver_SRCS
   ${sources_CommandLine}
   ${sources_RemoteAccess}
   ${sources_TCSoap}
-  ${sources_WorldThread}
   ${sources_localdir}
 )
 
@@ -52,16 +50,17 @@ ENDMACRO( auto_group )
 
 auto_group("${CMAKE_CURRENT_SOURCE_DIR}" "${worldserver_SRCS}")
 
-set(worldserver_SRCS
-  ${worldserver_SRCS}
-)
-
 if( WIN32 )
   set(worldserver_SRCS
     ${worldserver_SRCS}
-    ${sources_Debugging}
-    worldserver.rc
+    ${sources_windows_Debugging}
   )
+  if ( MSVC )
+    set(worldserver_SRCS
+      ${worldserver_SRCS}
+      worldserver.rc
+    )
+  endif()
 endif()
 
 include_directories(
@@ -85,6 +84,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/server/shared/Dynamic/LinkedReference
   ${CMAKE_SOURCE_DIR}/src/server/shared/Dynamic
   ${CMAKE_SOURCE_DIR}/src/server/shared/Logging
+  ${CMAKE_SOURCE_DIR}/src/server/shared/Networking
   ${CMAKE_SOURCE_DIR}/src/server/shared/Packets
   ${CMAKE_SOURCE_DIR}/src/server/shared/Threading
   ${CMAKE_SOURCE_DIR}/src/server/shared/Utilities
@@ -153,6 +153,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/server/game/Reputation
   ${CMAKE_SOURCE_DIR}/src/server/game/Scripting
   ${CMAKE_SOURCE_DIR}/src/server/game/Server/Protocol
+  ${CMAKE_SOURCE_DIR}/src/server/game/Server/Packets
   ${CMAKE_SOURCE_DIR}/src/server/game/Server
   ${CMAKE_SOURCE_DIR}/src/server/game/Skills
   ${CMAKE_SOURCE_DIR}/src/server/game/Spells
@@ -164,19 +165,23 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/server/game/Warden/Modules
   ${CMAKE_SOURCE_DIR}/src/server/game/Weather
   ${CMAKE_SOURCE_DIR}/src/server/game/World
-  ${CMAKE_SOURCE_DIR}/src/server/authserver/Server
-  ${CMAKE_SOURCE_DIR}/src/server/authserver/Realms
   ${CMAKE_SOURCE_DIR}/src/server/shared/Reporting
+  ${CMAKE_SOURCE_DIR}/src/server/shared/Realm
+  ${CMAKE_SOURCE_DIR}/src/server/shared/JSON
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/CommandLine
   ${CMAKE_CURRENT_SOURCE_DIR}/RemoteAccess
   ${CMAKE_CURRENT_SOURCE_DIR}/TCSoap
-  ${CMAKE_CURRENT_SOURCE_DIR}/WorldThread
-  ${ACE_INCLUDE_DIR}
   ${MYSQL_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
   ${MSFRAMEWORK_INCLUDE_DIR}
 )
+
+GroupSources(${CMAKE_CURRENT_SOURCE_DIR})
+
+if (Boost_FOUND)
+  include_directories(${Boost_INCLUDE_DIRS})
+endif()
 
 add_executable(worldserver
   ${worldserver_SRCS}
@@ -190,7 +195,7 @@ if( NOT WIN32 )
   )
 endif()
 
-add_dependencies(worldserver revision_data.h)
+add_dependencies(worldserver revision.h)
 
 if( UNIX AND NOT NOJEM AND NOT APPLE )
   set(worldserver_LINK_FLAGS "-pthread ${worldserver_LINK_FLAGS}")
@@ -201,6 +206,7 @@ set_target_properties(worldserver PROPERTIES LINK_FLAGS "${worldserver_LINK_FLAG
 target_link_libraries(worldserver
   game
   shared
+  proto
   scripts
   collision
   g3dlib
@@ -209,7 +215,7 @@ target_link_libraries(worldserver
   ${JEMALLOC_LIBRARY}
   ${READLINE_LIBRARY}
   ${TERMCAP_LIBRARY}
-  ${ACE_LIBRARY}
+  ${Boost_LIBRARIES}
   ${MYSQL_LIBRARY}
   ${OPENSSL_LIBRARIES}
   ${OPENSSL_EXTRA_LIBRARIES}
@@ -228,11 +234,7 @@ endif()
 
 if( UNIX )
   install(TARGETS worldserver DESTINATION bin)
-  if ( CMAKE_INSTALL_PREFIX MATCHES "/usr/local" )
-    install(FILES worldserver.conf.dist DESTINATION "etc/firestorm")
-  else()
-    install(FILES worldserver.conf.dist DESTINATION etc)
-  endif()
+  install(FILES worldserver.conf.dist DESTINATION ${CONF_DIR})
 elseif( WIN32 )
   install(TARGETS worldserver DESTINATION "${CMAKE_INSTALL_PREFIX}")
   install(FILES worldserver.conf.dist DESTINATION "${CMAKE_INSTALL_PREFIX}")

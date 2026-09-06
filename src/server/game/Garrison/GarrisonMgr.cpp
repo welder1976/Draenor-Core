@@ -8,6 +8,7 @@
 
 #ifndef CROSS
 #include "GarrisonMgr.hpp"
+#include "GarrisonPackets.h"
 #include "../../../scripts/Draenor/Garrison/GarrisonScriptData.hpp"
 #include "Player.h"
 #include "DatabaseEnv.h"
@@ -52,7 +53,7 @@ namespace MS {
 
 			case FactionIndex::Max:
 			default:
-				ASSERT(false);
+				ABORT();
 				break;
 
 			}
@@ -132,7 +133,7 @@ namespace MS {
 
 			case FactionIndex::Max:
 			default:
-				ASSERT(false);
+				ABORT();
 				break;
 
 			}
@@ -488,7 +489,7 @@ namespace MS {
 
 				case FactionIndex::Max:
 				default:
-					ASSERT(false);
+					ABORT();
 					break;
 
 				}
@@ -2971,9 +2972,9 @@ namespace MS {
 
 			if (!p_Triggered)
 			{
-				WorldPacket l_PlotRemoved(SMSG_GARRISON_PLOT_REMOVED, 4);
-				l_PlotRemoved << uint32(p_PlotInstanceID);
-				m_Owner->SendDirectMessage(&l_PlotRemoved);
+				WorldPackets::Garrison::GarrisonPlotRemoved plotRemoved;
+				plotRemoved.GarrPlotInstanceID = p_PlotInstanceID;
+				m_Owner->SendDirectMessage(const_cast<WorldPacket*>(plotRemoved.Write()));
 			}
 
 			uint32 l_BuildingTime = l_BuildingEntry->BuildDuration;
@@ -3241,22 +3242,19 @@ namespace MS {
 
 			GarrisonPlotInstanceInfoLocation l_PlotLocation = GetPlot(p_PlotInstanceID);
 
-			WorldPacket l_PlotPlacedPacket(SMSG_GARRISON_PLOT_PLACED, 24);
-			l_PlotPlacedPacket << uint32(p_PlotInstanceID);
-			l_PlotPlacedPacket << float(l_PlotLocation.X);
-			l_PlotPlacedPacket << float(l_PlotLocation.Y);
-			l_PlotPlacedPacket << float(l_PlotLocation.Z);
-			l_PlotPlacedPacket << float(l_PlotLocation.O);
-			l_PlotPlacedPacket << uint32(GetPlotType(p_PlotInstanceID));
+			WorldPackets::Garrison::GarrisonPlotPlaced plotPlaced;
+			WorldPackets::Garrison::GarrisonPlotInfo plotInfo;
+			plotInfo.GarrPlotInstanceID = p_PlotInstanceID;
+			plotInfo.PlotPos.Relocate(l_PlotLocation.X, l_PlotLocation.Y, l_PlotLocation.Z, l_PlotLocation.O);
+			plotInfo.PlotType = GetPlotType(p_PlotInstanceID);
+			plotPlaced.PlotInfo = &plotInfo;
+			m_Owner->SendDirectMessage(const_cast<WorldPacket*>(plotPlaced.Write()));
 
-			m_Owner->SendDirectMessage(&l_PlotPlacedPacket);
-
-			WorldPacket l_BuildingRemovedPacket(SMSG_GARRISON_BUILDING_REMOVED, 12);
-			l_BuildingRemovedPacket << uint32(PurchaseBuildingResults::Ok);
-			l_BuildingRemovedPacket << uint32(p_PlotInstanceID);
-			l_BuildingRemovedPacket << uint32(l_BuildingID);
-
-			m_Owner->SendDirectMessage(&l_BuildingRemovedPacket);
+			WorldPackets::Garrison::GarrisonBuildingRemoved buildingRemoved;
+			buildingRemoved.Result = PurchaseBuildingResults::Ok;
+			buildingRemoved.GarrPlotInstanceID = p_PlotInstanceID;
+			buildingRemoved.GarrBuildingID = l_BuildingID;
+			m_Owner->SendDirectMessage(const_cast<WorldPacket*>(buildingRemoved.Write()));
 		}
 
 		/// Has active building
@@ -3690,11 +3688,10 @@ namespace MS {
 				l_ResultCode = LearnBluePrintResults::Known;
 			}
 
-			WorldPacket l_Result(SMSG_GARRISON_LEARN_BLUEPRINT_RESULT, 8);
-			l_Result << uint32(l_ResultCode);
-			l_Result << uint32(p_BuildingRecID);
-
-			m_Owner->SendDirectMessage(&l_Result);
+			WorldPackets::Garrison::GarrisonLearnBlueprintResult learnResult;
+			learnResult.Result = l_ResultCode;
+			learnResult.BuildingID = p_BuildingRecID;
+			m_Owner->SendDirectMessage(const_cast<WorldPacket*>(learnResult.Write()));
 
 			return true;
 		}
@@ -3770,7 +3767,7 @@ namespace MS {
 
 			if (l_SiteEntry == nullptr)
 			{
-				sLog->outAshran("Garrison::InitDataForLevel() not data found");
+				TC_LOG_ERROR("server.worldserver", "Garrison::InitDataForLevel() not data found");
 				assert(false && "Garrison::InitDataForLevel() not data found");
 				return;
 			}
@@ -4795,7 +4792,7 @@ namespace MS {
 
 			case FactionIndex::Max:
 			default:
-				ASSERT(false);
+				ABORT();
 				break;
 
 			}
@@ -5223,7 +5220,7 @@ namespace MS {
 
 					if (!l_NewAbility)
 					{
-						sLog->outAshran("Can't find random ability for follower ID %u", p_Follower.FollowerID);
+						TC_LOG_ERROR("server.worldserver", "Can't find random ability for follower ID %u", p_Follower.FollowerID);
 						break;
 					}
 

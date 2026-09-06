@@ -9,7 +9,9 @@
 #ifndef _WARDENCHECKMGR_H
 #define _WARDENCHECKMGR_H
 
-#include "Common.h"
+#include <map>
+#include <mutex>
+#include <shared_mutex>
 #include "Cryptography/BigNumber.h"
 
 enum WardenActions
@@ -38,11 +40,16 @@ struct WardenCheckResult
 
 class WardenCheckMgr
 {
-    friend class ACE_Singleton<WardenCheckMgr, ACE_Null_Mutex>;
-    WardenCheckMgr();
-    ~WardenCheckMgr();
+    private:
+        WardenCheckMgr();
+        ~WardenCheckMgr();
 
     public:
+        static WardenCheckMgr* instance()
+        {
+            static WardenCheckMgr* instance = new WardenCheckMgr();
+            return instance;
+        }
         // We have a linear key without any gaps, so we use vector for fast access
         typedef std::vector<WardenCheck*> CheckContainer;
         typedef std::map<uint32, WardenCheckResult*> CheckResultContainer;
@@ -56,13 +63,13 @@ class WardenCheckMgr
         void LoadWardenChecks();
         void LoadWardenOverrides();
 
-        ACE_RW_Mutex _checkStoreLock;
+        std::shared_mutex _checkStoreLock;
 
     private:
         CheckContainer CheckStore;
         CheckResultContainer CheckResultStore;
 };
 
-#define sWardenCheckMgr ACE_Singleton<WardenCheckMgr, ACE_Null_Mutex>::instance()
+#define sWardenCheckMgr WardenCheckMgr::instance()
 
 #endif

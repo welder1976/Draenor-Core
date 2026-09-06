@@ -29,7 +29,6 @@
 #ifndef CROSS
 #include "Guild.h"
 #endif /* not CROSS */
-#include "Threading.h"
 #include "MSSignalHandler.h"
 
 bool ChatHandler::load_command_table = true;
@@ -76,7 +75,7 @@ ChatCommand* ChatHandler::getCommandTable()
             // cache top-level commands
             size_t added = 0;
             commandTableCache = (ChatCommand*)malloc(sizeof(ChatCommand) * total);
-            ACE_ASSERT(commandTableCache);
+            ASSERT(commandTableCache);
             memset(commandTableCache, 0, sizeof(ChatCommand) * total);
             for (std::vector<ChatCommand*>::const_iterator it = dynamic.begin(); it != dynamic.end(); ++it)
                 added += appendCommandTable(commandTableCache + added, *it);
@@ -355,13 +354,13 @@ bool ChatHandler::ExecuteCommandInTable(ChatCommand* table, const char* text, co
             // Disable the command
             table[i].SecurityLevel = (uint32)SpecificSecurityLevel::DisableByFailure;
 
-            sLog->outError(LOG_FILTER_WORLDSERVER, "Crash intercepted => ChatHandler::ExecuteCommandInTable(%p, %s, %s)", table, text, fullcmd.c_str());
+            TC_LOG_ERROR("server.worldserver", "Crash intercepted => ChatHandler::ExecuteCommandInTable(%p, %s, %s)", table, text, fullcmd.c_str());
         }
         //MS::SignalHandler::DisableThrowExceptionAtFailure();
 
         uint32 l_CommandExecutionTime = getMSTime() - l_TimeStamp;
         if (l_CommandExecutionTime > 10)
-            sLog->outAshran("Commmand [%s] take %u ms to execute", fullcmd.c_str(), l_CommandExecutionTime);
+            TC_LOG_ERROR("server.worldserver", "Commmand [%s] take %u ms to execute", fullcmd.c_str(), l_CommandExecutionTime);
 
         // table[i].Name == "" is special case: send original command to handler
         if (l_CommandResult)
@@ -438,17 +437,17 @@ bool ChatHandler::SetDataForCommandInTable(ChatCommand* table, const char* text,
         // expected subcommand by full name DB content
         else if (*text)
         {
-            sLog->outError(LOG_FILTER_SQL, "Table `command` have unexpected subcommand '%s' in command '%s', skip.", text, fullcommand.c_str());
+            TC_LOG_ERROR("sql.sql", "Table `command` have unexpected subcommand '%s' in command '%s', skip.", text, fullcommand.c_str());
             return false;
         }
 
         if (table[i].SecurityLevel != security)
-            sLog->outInfo(LOG_FILTER_GENERAL, "Table `command` overwrite for command '%s' default security (%u) by %u", fullcommand.c_str(), table[i].SecurityLevel, security);
+            TC_LOG_INFO("misc", "Table `command` overwrite for command '%s' default security (%u) by %u", fullcommand.c_str(), table[i].SecurityLevel, security);
 
         table[i].SecurityLevel = security;
 
         char * l_NewHelp = new char[help.size() + 1];
-        sprintf(l_NewHelp, "%s", help.c_str());
+        snprintf(l_NewHelp, sizeof(l_NewHelp), "%s", help.c_str());
         l_NewHelp[help.size()] = '\0';
 
         table[i].Help = (char const*)l_NewHelp;
@@ -460,9 +459,9 @@ bool ChatHandler::SetDataForCommandInTable(ChatCommand* table, const char* text,
     if (!cmd.empty())
     {
         if (table == getCommandTable())
-            sLog->outError(LOG_FILTER_SQL, "Table `command` have not existed command '%s', skip.", cmd.c_str());
+            TC_LOG_ERROR("sql.sql", "Table `command` have not existed command '%s', skip.", cmd.c_str());
         else
-            sLog->outError(LOG_FILTER_SQL, "Table `command` have not existed subcommand '%s' in command '%s', skip.", cmd.c_str(), fullcommand.c_str());
+            TC_LOG_ERROR("sql.sql", "Table `command` have not existed subcommand '%s' in command '%s', skip.", cmd.c_str(), fullcommand.c_str());
     }
 
     return false;
@@ -996,8 +995,8 @@ GameObject* ChatHandler::GetNearbyGameObject()
 
     Player* pl = m_session->GetPlayer();
     GameObject* obj = NULL;
-    JadeCore::NearestGameObjectCheck check(*pl);
-    JadeCore::GameObjectLastSearcher<JadeCore::NearestGameObjectCheck> searcher(pl, obj, check);
+    Trinity::NearestGameObjectCheck check(*pl);
+    Trinity::GameObjectLastSearcher<Trinity::NearestGameObjectCheck> searcher(pl, obj, check);
     pl->VisitNearbyGridObject(SIZE_OF_GRIDS, searcher);
     return obj;
 }
@@ -1014,13 +1013,13 @@ GameObject* ChatHandler::GetObjectGlobalyWithGuidOrNearWithDbGuid(uint32 lowguid
     if (!obj && sObjectMgr->GetGOData(lowguid))                   // guid is DB guid of object
     {
         // search near player then
-        CellCoord p(JadeCore::ComputeCellCoord(pl->GetPositionX(), pl->GetPositionY()));
+        CellCoord p(Trinity::ComputeCellCoord(pl->GetPositionX(), pl->GetPositionY()));
         Cell cell(p);
 
-        JadeCore::GameObjectWithDbGUIDCheck go_check(*pl, lowguid);
-        JadeCore::GameObjectSearcher<JadeCore::GameObjectWithDbGUIDCheck> checker(pl, obj, go_check);
+        Trinity::GameObjectWithDbGUIDCheck go_check(*pl, lowguid);
+        Trinity::GameObjectSearcher<Trinity::GameObjectWithDbGUIDCheck> checker(pl, obj, go_check);
 
-        TypeContainerVisitor<JadeCore::GameObjectSearcher<JadeCore::GameObjectWithDbGUIDCheck>, GridTypeMapContainer > object_checker(checker);
+        TypeContainerVisitor<Trinity::GameObjectSearcher<Trinity::GameObjectWithDbGUIDCheck>, GridTypeMapContainer > object_checker(checker);
         cell.Visit(p, object_checker, *pl->GetMap(), *pl, pl->GetGridActivationRange());
     }
 

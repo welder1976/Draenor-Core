@@ -1,26 +1,68 @@
-////////////////////////////////////////////////////////////////////////////////
-//
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
-//
-////////////////////////////////////////////////////////////////////////////////
+/*
+ * Copyright (C) 2008-2012 TrinityCore <http://www.trinitycore.org/>
+ * Copyright (C) 2005-2009 MaNGOS <http://getmangos.com/>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include "Common.h"
+#include "Config.h"
+#include "Log.h"
+#include <boost/property_tree/ini_parser.hpp>
+#include <algorithm>
+#include <cstdlib>
+#include <memory>
+#include <mutex>
 
-namespace ConfigMgr
+namespace bpt = boost::property_tree;
+
+class ConfigMgr
 {
-    bool Load(const char *file = NULL);
+    ConfigMgr() {}
+    ~ConfigMgr() {}
 
-    std::string GetStringDefault(const char* name, const std::string& def);
-    bool GetBoolDefault(const char* name, bool def);
-    int GetIntDefault(const char* name, int def);
-    float GetFloatDefault(const char* name, float def);
+public:
+    /// Method used only for loading main configuration files (bnetserver.conf and worldserver.conf)
+    bool LoadInitial(std::string const& file, std::string& error);
 
-    const std::string & GetFilename();
-}
+    static ConfigMgr* instance()
+    {
+        static ConfigMgr instance;
+        return &instance;
+    }
+
+    bool Reload(std::string& error);
+
+    std::string GetStringDefault(std::string const& name, const std::string& def);
+    bool GetBoolDefault(std::string const& name, bool def);
+    int GetIntDefault(std::string const& name, int def);
+    float GetFloatDefault(std::string const& name, float def);
+
+    std::string const& GetFilename();
+    std::list<std::string> GetKeysByString(std::string const& name);
+
+private:
+    std::string _filename;
+    bpt::ptree _config;
+    std::mutex _configLock;
+
+    ConfigMgr(ConfigMgr const&);
+    ConfigMgr& operator=(ConfigMgr const&);
+};
+
+#define sConfigMgr ConfigMgr::instance()
 
 #endif

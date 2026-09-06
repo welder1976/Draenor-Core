@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,11 +46,16 @@ typedef ACE_Based::LockedMap<uint32, AnticheatData> AnticheatPlayersDataMap;
 
 class AnticheatMgr
 {
-    friend class ACE_Singleton<AnticheatMgr, ACE_Null_Mutex>;
-    AnticheatMgr();
-    ~AnticheatMgr();
+    private:
+        AnticheatMgr();
+        ~AnticheatMgr();
 
-public:
+    public:
+        static AnticheatMgr* instance()
+        {
+            static AnticheatMgr* instance = new AnticheatMgr();
+            return instance;
+        }
 
     void StartHackDetection(Player* player, MovementInfo const& movementInfo, uint32 opcode);
     void DeletePlayerReport(Player* player, bool login);
@@ -86,6 +91,6 @@ private:
     AnticheatPlayersDataMap m_Players;                        ///< Player data
 };
 
-#define sAnticheatMgr ACE_Singleton<AnticheatMgr, ACE_Null_Mutex>::instance()
+#define sAnticheatMgr AnticheatMgr::instance()
 
 #endif

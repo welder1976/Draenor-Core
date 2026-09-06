@@ -13,6 +13,7 @@
 #include "Common.h"
 
 #include <cctype>
+#include <cstring>
 #include <iomanip>
 #include <sstream>
 #include <functional>
@@ -77,6 +78,10 @@ void UnpackDBBinary(void* unpackedData, uint32 unpackedCount, void const* packed
 nullable_string PackDBBinary(void const* unpackedData, uint32 unpackedCount);
 
 void stripLineInvisibleChars(std::string &src);
+
+int32 MoneyStringToMoney(const std::string& moneyString);
+
+struct tm* localtime_r(const time_t* time, struct tm* result);
 
 std::string secsToTimeString(uint64 timeInSecs, bool shortText = false, bool hoursOnly = false);
 uint32 TimeStringToSecs(const std::string& timestring);
@@ -300,6 +305,10 @@ inline wchar_t wcharToUpper(wchar_t wchar)
         return wchar_t(uint16(wchar)-0x0020);
     if (wchar == 0x0451)                                     // CYRILLIC SMALL LETTER IO
         return wchar_t(0x0401);
+    if (wchar == 0x0153)                                     // LATIN SMALL LIGATURE OE
+        return wchar_t(0x0152);
+    if (wchar == 0x00FF)                                     // LATIN SMALL LETTER Y WITH DIAERESIS
+        return wchar_t(0x0178);
 
     return wchar;
 }
@@ -326,6 +335,10 @@ inline wchar_t wcharToLower(wchar_t wchar)
         return wchar_t(0x00DF);
     if (wchar == 0x0401)                                     // CYRILLIC CAPITAL LETTER IO
         return wchar_t(0x0451);
+    if (wchar == 0x0152)                                     // LATIN CAPITAL LIGATURE OE
+        return wchar_t(0x0153);
+    if (wchar == 0x0178)                                     // LATIN CAPITAL LETTER Y WITH DIAERESIS
+        return wchar_t(0x00FF);
     if (wchar >= 0x0410 && wchar <= 0x042F)                  // CYRILLIC CAPITAL LETTER A - CYRILLIC CAPITAL LETTER YA
         return wchar_t(uint16(wchar)+0x0020);
 
@@ -354,11 +367,34 @@ bool consoleToUtf8(const std::string& conStr, std::string& utf8str);
 bool Utf8FitTo(const std::string& str, std::wstring search);
 void utf8printf(FILE* out, const char *str, ...);
 void vutf8printf(FILE* out, const char *str, va_list* ap);
+bool Utf8ToUpperOnlyLatin(std::string& utf8String);
 
 bool IsIPAddress(char const* ipaddress);
 uint32 CreatePIDFile(const std::string& filename);
+uint32 GetPID();
 
 std::string ByteArrayToHexStr(uint8 const* bytes, uint32 length, bool reverse = false);
+
+template<size_t N>
+inline void HexStrToByteArray(char const* hex, uint8 (&out)[N])
+{
+    std::memset(out, 0, N);
+    if (!hex)
+        return;
+
+    size_t hexLen = std::strlen(hex);
+    for (size_t i = 0; i + 1 < hexLen && (i / 2) < N; i += 2)
+    {
+        auto nibble = [](char c) -> uint8
+        {
+            if (c >= '0' && c <= '9') return uint8(c - '0');
+            if (c >= 'a' && c <= 'f') return uint8(c - 'a' + 10);
+            if (c >= 'A' && c <= 'F') return uint8(c - 'A' + 10);
+            return 0;
+        };
+        out[i / 2] = uint8((nibble(hex[i]) << 4) | nibble(hex[i + 1]));
+    }
+}
 
 inline std::string UrlEncode(const std::string & p_Value)
 {

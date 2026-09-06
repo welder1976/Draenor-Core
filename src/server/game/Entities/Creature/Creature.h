@@ -6,8 +6,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef CREATURE_H
-#define CREATURE_H
+#ifndef TRINITYCORE_CREATURE_H
+#define TRINITYCORE_CREATURE_H
 
 #include "Common.h"
 #include "Unit.h"
@@ -131,7 +131,7 @@ enum CreatureFlagsExtra
 struct CreatureTemplate
 {
     uint32  Entry;
-    uint32  DifficultyEntry[Difficulty::MaxDifficulties];
+    uint32  DifficultyEntry[Difficulty::MAX_DIFFICULTY];
     uint32  KillCredit[MAX_KILL_CREDIT];
     uint32  Modelid1;
     uint32  Modelid2;
@@ -322,7 +322,7 @@ struct CreatureLocale
 {
     StringVector Name;
     StringVector SubName;
-    StringVector l_FemaleName;
+    StringVector FemaleName;
 };
 
 struct GossipMenuItemsLocale
@@ -705,8 +705,10 @@ class Creature : public Unit, public GridObject<Creature>, public MapObject
         virtual void DeleteFromDB();                        // overriden in Pet
 
         Loot loot;
-        bool lootForPickPocketed;
-        bool lootForBody;
+        void StartPickPocketRefillTimer();
+        void ResetPickPocketRefillTimer() { _pickpocketLootRestore = 0; }
+        void SetSkinner(uint64 guid) { _skinner = guid; }
+        uint64 GetSkinner() const { return _skinner; } // Returns the player who skinned this creature
         Player* GetLootRecipient() const;
         Group* GetLootRecipientGroup() const;
         bool hasLootRecipient() const { return m_lootRecipient || m_lootRecipientGroup; }
@@ -858,6 +860,7 @@ class Creature : public Unit, public GridObject<Creature>, public MapObject
 
         void SetLockAI(bool lock) { m_AI_locked = lock; }
 
+        void SetSeerGUID(uint64 guid) { uiSeerGUID = guid; }
         void SendAddFollowerQuery(Player* p_Player, uint32 p_Sender, uint32 p_Action, char const* p_FollowerName);
 
         uint32 m_LOSCheckTimer;
@@ -902,8 +905,10 @@ class Creature : public Unit, public GridObject<Creature>, public MapObject
 
         uint64 m_lootRecipient;
         uint32 m_lootRecipientGroup;
+        uint64 _skinner;
 
         /// Timers
+        time_t _pickpocketLootRestore;
         time_t m_corpseRemoveTime;                          ///< (msecs) timer for death or corpse disappearance
         time_t m_respawnTime;                               ///< (secs)  time of next respawn
         uint32 m_respawnDelay;                              ///< (secs)  delay between corpse disappearance and respawning
@@ -937,6 +942,7 @@ class Creature : public Unit, public GridObject<Creature>, public MapObject
         CreatureData const* m_creatureData;
         CreatureScript* m_CreatureScript;
 
+		uint64 uiSeerGUID;
         uint16 m_LootMode;                                  ///< bitmask, default LOOT_MODE_DEFAULT, determines what loot will be lootable
         uint32 guid_transport;
 

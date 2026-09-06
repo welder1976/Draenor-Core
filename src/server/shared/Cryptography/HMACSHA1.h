@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Project-Hellscream https://hellscream.org
-// Copyright (C) 2018-2020 Project-Hellscream-6.2
-// Discord https://discord.gg/CWCF3C9
+//  MILLENIUM-STUDIO
+//  Copyright 2016 Millenium-studio SARL
+//  All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,30 +30,29 @@ class HmacHash
         uint8 *GetDigest() { return (uint8*)m_digest; }
         int GetLength() const { return SHA_DIGEST_LENGTH; }
     private:
-        HMAC_CTX m_ctx;
+        HMAC_CTX* ctx;
         uint8 m_digest[SHA_DIGEST_LENGTH];
 };
 
 class HmacHash256
 {
     public:
-    HmacHash256(uint32 len, uint8 *seed);
-    ~HmacHash256();
-    void UpdateData(const std::string &str);
-    void UpdateData(const uint8* data, size_t len);
-    void Finalize();
-    uint8 *ComputeHash(BigNumber* bn);
-    uint8 *ComputeHash(uint8 *seed, uint32 len);
-    uint8 *GetDigest() {
-        return (uint8*)m_digest;
-    }
-    int GetLength() const {
-        return SHA256_DIGEST_LENGTH;
-    }
+        HmacHash256(uint32 len, uint8 *seed);
+        ~HmacHash256();
+        void UpdateData(const std::string &str);
+        void UpdateData(const uint8* data, size_t len);
+        void Finalize();
+        uint8 *ComputeHash(BigNumber* bn);
+        uint8 *ComputeHash(uint8 *seed, uint32 len);
+        uint8 *GetDigest() { return (uint8*)m_digest; }
+        int GetLength() const { return SHA256_DIGEST_LENGTH; }
     private:
-    HMAC_CTX m_ctx;
-    uint8 m_digest[SHA256_DIGEST_LENGTH];
+        HMAC_CTX* ctx;
+        uint8 m_digest[SHA256_DIGEST_LENGTH];
 };
+
+typedef HmacHash HmacSha1;
+typedef HmacHash256 HmacSha256;
 
 #endif
 

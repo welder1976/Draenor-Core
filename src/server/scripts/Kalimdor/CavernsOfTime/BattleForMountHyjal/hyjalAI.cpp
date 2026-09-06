@@ -397,7 +397,7 @@ void hyjalAI::Reset()
             instance->DoUpdateWorldState(WORLD_STATE_ENEMYCOUNT, 0);
             instance->SetData(DATA_RESET_TRASH_COUNT, 0);
         }
-    } else sLog->outError(LOG_FILTER_TSCR, ERROR_INST_DATA);
+    } else TC_LOG_ERROR("scripts", ERROR_INST_DATA);
 
     //Visibility
     DoHide = true;
@@ -530,7 +530,7 @@ void hyjalAI::SummonNextWave(const Wave wave[18], uint32 Count, float Base[4][3]
 
     if (!instance)
     {
-        sLog->outError(LOG_FILTER_TSCR, ERROR_INST_DATA);
+        TC_LOG_ERROR("scripts", ERROR_INST_DATA);
         return;
     }
     InfernalCount = 0;//reset infernal count every new wave
@@ -560,7 +560,7 @@ void hyjalAI::SummonNextWave(const Wave wave[18], uint32 Count, float Base[4][3]
         else
         {
             NextWaveTimer = 15000;
-            sLog->outDebug(LOG_FILTER_TSCR, "HyjalAI: debug mode is enabled. Next Wave in 15 seconds");
+            TC_LOG_DEBUG("scripts", "HyjalAI: debug mode is enabled. Next Wave in 15 seconds");
         }
     }
     else
@@ -604,7 +604,7 @@ uint32 hyjalAI::GetInstanceData(uint32 Event)
 {
     if (instance)
         return instance->GetData(Event);
-    else sLog->outError(LOG_FILTER_TSCR, ERROR_INST_DATA);
+    else TC_LOG_ERROR("scripts", ERROR_INST_DATA);
 
     return 0;
 }
@@ -945,16 +945,16 @@ void hyjalAI::JustDied(Unit* /*killer*/)
 
 void hyjalAI::HideNearPos(float x, float y)
 {
-    CellCoord pair(JadeCore::ComputeCellCoord(x, y));
+    CellCoord pair(Trinity::ComputeCellCoord(x, y));
     Cell cell(pair);
     cell.SetNoCreate();
 
     // First get all creatures.
     std::list<Creature*> creatures;
-    JadeCore::AllFriendlyCreaturesInGrid creature_check(me);
-    JadeCore::CreatureListSearcher<JadeCore::AllFriendlyCreaturesInGrid> creature_searcher(me, creatures, creature_check);
+    Trinity::AllFriendlyCreaturesInGrid creature_check(me);
+    Trinity::CreatureListSearcher<Trinity::AllFriendlyCreaturesInGrid> creature_searcher(me, creatures, creature_check);
 
-    TypeContainerVisitor <JadeCore::CreatureListSearcher<JadeCore::AllFriendlyCreaturesInGrid>, GridTypeMapContainer> creature_visitor(creature_searcher);
+    TypeContainerVisitor <Trinity::CreatureListSearcher<Trinity::AllFriendlyCreaturesInGrid>, GridTypeMapContainer> creature_visitor(creature_searcher);
     cell.Visit(pair, creature_visitor, *(me->GetMap()), *me, me->GetGridActivationRange());
 
     if (!creatures.empty())
@@ -969,13 +969,13 @@ void hyjalAI::HideNearPos(float x, float y)
 
 void hyjalAI::RespawnNearPos(float x, float y)
 {
-    CellCoord p(JadeCore::ComputeCellCoord(x, y));
+    CellCoord p(Trinity::ComputeCellCoord(x, y));
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::RespawnDo u_do;
-    JadeCore::WorldObjectWorker<JadeCore::RespawnDo> worker(me, u_do);
-    TypeContainerVisitor<JadeCore::WorldObjectWorker<JadeCore::RespawnDo>, GridTypeMapContainer > obj_worker(worker);
+    Trinity::RespawnDo u_do;
+    Trinity::WorldObjectWorker<Trinity::RespawnDo> worker(me, u_do);
+    TypeContainerVisitor<Trinity::WorldObjectWorker<Trinity::RespawnDo>, GridTypeMapContainer > obj_worker(worker);
     cell.Visit(p, obj_worker, *me->GetMap(), *me, me->GetGridActivationRange());
 }
 
@@ -1000,16 +1000,16 @@ void hyjalAI::WaypointReached(uint32 waypointId)
         }
         //do some talking
         //all alive guards walk near here
-        CellCoord pair(JadeCore::ComputeCellCoord(me->GetPositionX(), me->GetPositionY()));
+        CellCoord pair(Trinity::ComputeCellCoord(me->GetPositionX(), me->GetPositionY()));
         Cell cell(pair);
         cell.SetNoCreate();
 
         // First get all creatures.
         std::list<Creature*> creatures;
-        JadeCore::AllFriendlyCreaturesInGrid creature_check(me);
-        JadeCore::CreatureListSearcher<JadeCore::AllFriendlyCreaturesInGrid> creature_searcher(me, creatures, creature_check);
+        Trinity::AllFriendlyCreaturesInGrid creature_check(me);
+        Trinity::CreatureListSearcher<Trinity::AllFriendlyCreaturesInGrid> creature_searcher(me, creatures, creature_check);
         TypeContainerVisitor
-            <JadeCore::CreatureListSearcher<JadeCore::AllFriendlyCreaturesInGrid>,
+            <Trinity::CreatureListSearcher<Trinity::AllFriendlyCreaturesInGrid>,
             GridTypeMapContainer> creature_visitor(creature_searcher);
 
         cell.Visit(pair, creature_visitor, *(me->GetMap()), *me, me->GetGridActivationRange());
@@ -1041,15 +1041,15 @@ void hyjalAI::DoOverrun(uint32 faction, const uint32 diff)
     {
         if (TeleportTimer <= diff)
         {
-            CellCoord pair(JadeCore::ComputeCellCoord(me->GetPositionX(), me->GetPositionY()));
+            CellCoord pair(Trinity::ComputeCellCoord(me->GetPositionX(), me->GetPositionY()));
             Cell cell(pair);
             cell.SetNoCreate();
 
             std::list<Creature*> creatures;
-            JadeCore::AllFriendlyCreaturesInGrid creature_check(me);
-            JadeCore::CreatureListSearcher<JadeCore::AllFriendlyCreaturesInGrid> creature_searcher(me, creatures, creature_check);
+            Trinity::AllFriendlyCreaturesInGrid creature_check(me);
+            Trinity::CreatureListSearcher<Trinity::AllFriendlyCreaturesInGrid> creature_searcher(me, creatures, creature_check);
             TypeContainerVisitor
-                <JadeCore::CreatureListSearcher<JadeCore::AllFriendlyCreaturesInGrid>,
+                <Trinity::CreatureListSearcher<Trinity::AllFriendlyCreaturesInGrid>,
                 GridTypeMapContainer> creature_visitor(creature_searcher);
 
             cell.Visit(pair, creature_visitor, *(me->GetMap()), *me, me->GetGridActivationRange());

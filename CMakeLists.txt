@@ -1,18 +1,36 @@
+# Copyright (C) 2005-2009 MaNGOS <http://getmangos.com/>
+# Copyright (C) 2008-2024 TrinityCore <http://www.trinitycore.org/>
 #
-#  MILLENIUM-STUDIO
-#  Copyright 2016 Millenium-studio SARL
-#  All Rights Reserved.
+# This file is free software; as a special exception the author gives
+# unlimited permission to copy and/or distribute it, with or without
+# modifications, as long as this notice is preserved.
 #
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY, to the extent permitted by law; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 # Set projectname (must be done AFTER setting configurationtypes)
-project(WoDCore)
 
 # CMake policies (can not be handled elsewhere)
- cmake_minimum_required(VERSION 2.8.9)
- cmake_policy(SET CMP0005 OLD)
- if(POLICY CMP0043)
-   cmake_policy(SET CMP0043 OLD) # Disable 'Ignore COMPILE_DEFINITIONS_<Config> properties'
- endif(POLICY CMP0043)
+
+# Called prior to project
+cmake_minimum_required(VERSION 3.20.4)
+
+# CMake project name
+project(DraenorCore)
+ 
+# CMake policies (can not be handled elsewhere)
+cmake_policy(SET CMP0005 NEW)
+if (CMAKE_VERSION VERSION_LESS "3.16.0")
+  cmake_policy(SET CMP0043 OLD) # Disable 'Ignore COMPILE_DEFINITIONS_<Config> properties'
+else()
+  cmake_policy(SET CMP0043 NEW) # Cotire isn't used so set to NEW
+endif()
+cmake_policy(SET CMP0054 NEW) # Only interpret if() arguments as variables or keywords when unquoted - prevents intepreting if (SOME_STRING_VARIABLE MATCHES "MSVC") as if (SOME_STRING_VARIABLE MATCHES "1")
+
+if(POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW) # find_package() uses <PackageName>_ROOT variables
+endif()
 
 # Set RPATH-handing (CMake parameters)
 set(CMAKE_SKIP_BUILD_RPATH 0)
@@ -59,8 +77,9 @@ include(GroupSources)
 
 # basic packagesearching and setup (further support will be needed, this is a preliminary release!)
 find_package(PCHSupport)
-find_package(ACE REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(curl REQUIRED)
+find_package(EasyJSon REQUIRED)
 # FIND_PACKAGE(msFramework REQUIRED)
 find_package(MySQL REQUIRED)
 
@@ -73,6 +92,8 @@ endif()
 if( NOT DISABLEGITCHECK )
   find_package(Git)
 endif()
+
+# Boost will be handled by dep/boost/CMakeLists.txt
 
 # Find revision ID and hash of the sourcetree
 include(cmake/genrev.cmake)

@@ -1,4 +1,4 @@
-﻿////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 //
 // Project-Hellscream https://hellscream.org
 // Copyright (C) 2018-2020 Project-Hellscream-6.2
@@ -161,9 +161,6 @@ _hitMask(hitMask), _spell(spell), _damageInfo(damageInfo), _healInfo(healInfo)
 
 // we can disable this warning for this since it only
 // causes undefined behavior when passed to the base class constructor
-#ifdef _MSC_VER
-#pragma warning(disable:4355)
-#endif
 Unit::Unit(bool isWorldObject): WorldObject(isWorldObject)
     , m_movedPlayer(NULL)
     , m_lastSanctuaryTime(0)
@@ -187,9 +184,6 @@ Unit::Unit(bool isWorldObject): WorldObject(isWorldObject)
     , m_HostileRefManager(this)
     , _lastDamagedTime(0)
 {
-#ifdef _MSC_VER
-#pragma warning(default:4355)
-#endif
     m_objectType |= TYPEMASK_UNIT;
     m_objectTypeId = TYPEID_UNIT;
 
@@ -1056,7 +1050,10 @@ uint32 Unit::DealDamage(Unit* victim, uint32 damage, CleanDamage const* cleanDam
         }
     }
 
+    TC_LOG_DEBUG("entities.unit", "DealDamageStart");
+
     uint32 health = victim->GetHealth();
+    TC_LOG_DEBUG("entities.unit", "Unit " UI64FMTD " dealt %u damage to unit " UI64FMTD, GetGUID(), damage, victim->GetGUID());
 
     // duel ends when player has 1 or less hp
     bool duel_hasEnded = false;
@@ -2320,7 +2317,7 @@ SpellSchoolMask Unit::CalcAbsorbResist(Unit* victim, SpellSchoolMask schoolMask,
     // We're going to call functions which can modify content of the list during iteration over it's elements
     // Let's copy the list so we can prevent iterator invalidation
     AuraEffectList vSchoolAbsorbCopy(victim->GetAuraEffectsByType(SPELL_AURA_SCHOOL_ABSORB));
-    vSchoolAbsorbCopy.sort(JadeCore::AbsorbAuraOrderPred());
+    vSchoolAbsorbCopy.sort(Trinity::AbsorbAuraOrderPred());
 
     // absorb without mana cost
     for (AuraEffectList::iterator itr = vSchoolAbsorbCopy.begin(); (itr != vSchoolAbsorbCopy.end()) && (dmgInfo.GetDamage() > 0); ++itr)
@@ -3642,7 +3639,7 @@ void Unit::InterruptSpell(CurrentSpellTypes spellType, bool withDelayed, bool wi
 {
     ASSERT(spellType < CURRENT_MAX_SPELL);
 
-    //sLog->outDebug(LOG_FILTER_UNITS, "Interrupt spell for unit %u.", GetEntry());
+    //TC_LOG_DEBUG("entities.unit", "Interrupt spell for unit %u.", GetEntry());
     Spell* spell = m_currentSpells[spellType];
     if (spell
         && (withDelayed || spell->getState() != SPELL_STATE_DELAYED)
@@ -4128,7 +4125,7 @@ void Unit::_UnapplyAura(AuraApplication * aurApp, AuraRemoveMode removeMode)
         else
             ++iter;
     }
-    ASSERT(false);
+    ABORT();
 }
 
 void Unit::_RemoveNoStackAurasDueToAura(Aura* aura)
@@ -4244,7 +4241,7 @@ void Unit::RemoveOwnedAura(Aura* aura, AuraRemoveMode removeMode)
             RemoveOwnedAura(itr, removeMode);
             return;
         }
-    ASSERT(false);
+    ABORT();
 }
 
 Aura* Unit::GetOwnedAura(uint32 spellId, uint64 casterGUID, uint64 itemCasterGUID, uint32 reqEffMask, Aura* except) const
@@ -4344,7 +4341,7 @@ void Unit::RemoveAurasDueToSpell(uint32 spellId, uint64 casterGUID, uint32 reqEf
     }
 }
 
-void Unit::RemoveAuraFromStack(uint32 spellId, uint64 casterGUID, AuraRemoveMode removeMode)
+void Unit::RemoveAuraFromStack(uint32 spellId, uint64 casterGUID, AuraRemoveMode removeMode, int32 num)
 {
     for (AuraMap::iterator iter = m_ownedAuras.lower_bound(spellId); iter != m_ownedAuras.upper_bound(spellId);)
     {
@@ -4352,7 +4349,7 @@ void Unit::RemoveAuraFromStack(uint32 spellId, uint64 casterGUID, AuraRemoveMode
         if ((aura->GetType() == UNIT_AURA_TYPE)
             && (!casterGUID || aura->GetCasterGUID() == casterGUID))
         {
-            aura->ModStackAmount(-1, removeMode);
+            aura->ModStackAmount(-num, removeMode);
             return;
         }
         else
@@ -5241,7 +5238,7 @@ bool Unit::HasAura(uint32 spellId, uint64 casterGUID, uint64 itemCasterGUID, uin
 {
     if (this == nullptr) ///<  'this' pointer cannot be null in well-defined C++ code; comparison may be assumed to always evaluate to false
     {
-        sLog->outAshran("Unit::HasAura(spellId: %u) this == nullptr", spellId);
+        TC_LOG_ERROR("server.worldserver", "Unit::HasAura(spellId: %u) this == nullptr", spellId);
         return false;
     }
 
@@ -6148,7 +6145,7 @@ void Unit::SendSpellDamageResist(Unit * p_Target, uint32 p_SpellID)
 // We need to analyze UnfriendlyMessageDistDeliverer, because it's use delete pointer in somes cases
 void Unit::SendMessageUnfriendlyToSetInRange(WorldPacket* data, float /*fist*/)
 {
-    JadeCore::UnfriendlyMessageDistDeliverer notifier(this, data, GetVisibilityRange());
+    Trinity::UnfriendlyMessageDistDeliverer notifier(this, data, GetVisibilityRange());
     VisitNearbyWorldObject(GetVisibilityRange(), notifier);
 }
 
@@ -6370,7 +6367,7 @@ bool Unit::HandleAuraProcOnPowerAmount(Unit* victim, uint32 /*damage*/, AuraEffe
     if (triggerEntry == NULL)
     {
         // Not cast unknown spell
-        // sLog->outError("Unit::HandleAuraProcOnPowerAmount: Spell %u have 0 in EffectTriggered[%d], not handled custom case?", auraSpellInfo->Id, triggeredByAura->GetEffIndex());
+        // TC_LOG_ERROR("Unit::HandleAuraProcOnPowerAmount: Spell %u have 0 in EffectTriggered[%d], not handled custom case?", auraSpellInfo->Id, triggeredByAura->GetEffIndex());
         return false;
     }
 
@@ -7524,7 +7521,7 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
 
 					if (l_Party.size() > 1)
 					{
-						l_Party.sort(JadeCore::HealthPctOrderPred());
+						l_Party.sort(Trinity::HealthPctOrderPred());
 						l_Party.resize(1);
 					}
 
@@ -7549,8 +7546,8 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                         return false;
 
                     std::list<Player*> plrList;
-                    JadeCore::AnyFriendlyUnitInObjectRangeCheck check(this, this, 15.0f);
-                    JadeCore::PlayerListSearcher<JadeCore::AnyFriendlyUnitInObjectRangeCheck> searcher(this, plrList, check);
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck check(this, this, 15.0f);
+                    Trinity::PlayerListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(this, plrList, check);
                     VisitNearbyObject(15.0f, searcher);
                     if (plrList.empty())
                         return false;
@@ -7560,7 +7557,7 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                     if (plrList.empty())
                         return false;
 
-                    plrList.sort(JadeCore::HealthPctOrderPred());
+                    plrList.sort(Trinity::HealthPctOrderPred());
                     plrList.resize(1);
 
                     int32 bp0 = damage;
@@ -7974,8 +7971,8 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                         return false;
 
                     std::list<Player*> plrList;
-                    JadeCore::AnyFriendlyUnitInObjectRangeCheck check(this, this, 15.0f);
-                    JadeCore::PlayerListSearcher<JadeCore::AnyFriendlyUnitInObjectRangeCheck> searcher(this, plrList, check);
+                    Trinity::AnyFriendlyUnitInObjectRangeCheck check(this, this, 15.0f);
+                    Trinity::PlayerListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(this, plrList, check);
                     VisitNearbyObject(15.0f, searcher);
                     if (plrList.empty())
                         return false;
@@ -7985,7 +7982,7 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                     if (plrList.empty())
                         return false;
 
-                    plrList.sort(JadeCore::HealthPctOrderPred());
+                    plrList.sort(Trinity::HealthPctOrderPred());
                     plrList.resize(1);
 
                     int32 bp0 = int32(CalculatePct(damage, 10));
@@ -9547,7 +9544,7 @@ bool Unit::HandleProcTriggerSpell(Unit* victim, uint32 damage, AuraEffect* trigg
     if (triggerEntry == NULL)
     {
         // Don't cast unknown spell
-        // sLog->outError(LOG_FILTER_UNITS, "Unit::HandleProcTriggerSpell: Spell %u has 0 in EffectTriggered[%d]. Unhandled custom case?", auraSpellInfo->Id, triggeredByAura->GetEffIndex());
+        // TC_LOG_ERROR("entities.unit", "Unit::HandleProcTriggerSpell: Spell %u has 0 in EffectTriggered[%d]. Unhandled custom case?", auraSpellInfo->Id, triggeredByAura->GetEffIndex());
         return false;
     }
 
@@ -11231,7 +11228,7 @@ void Unit::SetMinion(Minion *minion, bool apply, PetSlot slot, bool stampeded)
                     {
                         OutDebugInfo();
                         (*itr)->OutDebugInfo();
-                        ASSERT(false);
+                        ABORT();
                     }
                     ASSERT((*itr)->GetTypeId() == TYPEID_UNIT);
 
@@ -11288,7 +11285,7 @@ void Unit::SetCharm(Unit* charm, bool apply)
         if (IsPlayer())
         {
             if (!AddGuidValue(UNIT_FIELD_CHARM, charm->GetGUID()))
-                sLog->outFatal(LOG_FILTER_UNITS, "Player %s is trying to charm unit %u, but it already has a charmed unit " UI64FMTD "", GetName(), charm->GetEntry(), GetCharmGUID());
+                TC_LOG_FATAL("entities.unit", "Player %s is trying to charm unit %u, but it already has a charmed unit " UI64FMTD "", GetName(), charm->GetEntry(), GetCharmGUID());
 
             charm->m_ControlledByPlayer = true;
             // TODO: maybe we can use this flag to check if controlled by player
@@ -11301,7 +11298,7 @@ void Unit::SetCharm(Unit* charm, bool apply)
         charm->SetByteValue(UNIT_FIELD_SHAPESHIFT_FORM, 1, GetByteValue(UNIT_FIELD_SHAPESHIFT_FORM, 1));
 
         if (!charm->AddGuidValue(UNIT_FIELD_CHARMED_BY, GetGUID()))
-            sLog->outFatal(LOG_FILTER_UNITS, "Unit %u is being charmed, but it already has a charmer " UI64FMTD "", charm->GetEntry(), charm->GetCharmerGUID());
+            TC_LOG_FATAL("entities.unit", "Unit %u is being charmed, but it already has a charmer " UI64FMTD "", charm->GetEntry(), charm->GetCharmerGUID());
 
         _isWalkingBeforeCharm = charm->IsWalking();
         if (_isWalkingBeforeCharm)
@@ -11314,11 +11311,11 @@ void Unit::SetCharm(Unit* charm, bool apply)
         if (IsPlayer())
         {
             if (!RemoveGuidValue(UNIT_FIELD_CHARM, charm->GetGUID()))
-                sLog->outFatal(LOG_FILTER_UNITS, "Player %s is trying to uncharm unit %u, but it has another charmed unit " UI64FMTD "", GetName(), charm->GetEntry(), GetCharmGUID());
+                TC_LOG_FATAL("entities.unit", "Player %s is trying to uncharm unit %u, but it has another charmed unit " UI64FMTD "", GetName(), charm->GetEntry(), GetCharmGUID());
         }
 
         if (!charm->RemoveGuidValue(UNIT_FIELD_CHARMED_BY, GetGUID()))
-            sLog->outFatal(LOG_FILTER_UNITS, "Unit %u is being uncharmed, but it has another charmer " UI64FMTD "", charm->GetEntry(), charm->GetCharmerGUID());
+            TC_LOG_FATAL("entities.unit", "Unit %u is being uncharmed, but it has another charmer " UI64FMTD "", charm->GetEntry(), charm->GetCharmerGUID());
 
         if (charm->IsPlayer())
         {
@@ -11397,8 +11394,8 @@ int32 Unit::DealHeal(Unit* victim, uint32 addhealth, SpellInfo const* spellProto
         {
             std::list<Unit*> targetList;
 
-            JadeCore::AnyFriendlyUnitInObjectRangeCheck u_check(unit, unit, 6.0f);
-            JadeCore::UnitListSearcher<JadeCore::AnyFriendlyUnitInObjectRangeCheck> searcher(unit, targetList, u_check);
+            Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(unit, unit, 6.0f);
+            Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(unit, targetList, u_check);
             unit->VisitNearbyObject(6.0f, searcher);
 
             targetList.remove_if([this, unit](WorldObject* p_Object) -> bool
@@ -11414,7 +11411,7 @@ int32 Unit::DealHeal(Unit* victim, uint32 addhealth, SpellInfo const* spellProto
 
             if (!targetList.empty())
             {
-                targetList.sort(JadeCore::HealthPctOrderPred());
+                targetList.sort(Trinity::HealthPctOrderPred());
 
                 for (auto itr : targetList)
                 {
@@ -12419,7 +12416,7 @@ uint8 Unit::ProcMultistrike(SpellInfo const* p_ProcSpell, Unit* p_Target, uint32
                 if (SpellXSpellVisualEntry const* l_VisualEntry = sSpellXSpellVisualStore.LookupEntry(p_ProcSpell->GetSpellXSpellVisualId(this)))
                     l_VisualID = l_VisualEntry->VisualID;
 
-                if (l_VisualID && l_VisualID[0] && p_ProcFlag != PROC_FLAG_DONE_PERIODIC || !p_ProcSpell->Id == 129250) // HoTs, DoTs, Power Word: Solace should not proc a visual
+                if (l_VisualID && l_VisualID[0] && p_ProcFlag != PROC_FLAG_DONE_PERIODIC || p_ProcSpell->Id != 129250) // HoTs, DoTs, Power Word: Solace should not proc a visual
                     SendPlaySpellVisual(l_VisualID[0], p_Target, (p_ProcSpell->Speed * 2.0f), 0.0f, Position());
 
                 if (p_OwnerAuraEffect)
@@ -13822,8 +13819,7 @@ void Unit::Mount(uint32 mount, uint32 VehicleId, uint32 creatureEntry)
         {
             if (CreateVehicleKit(VehicleId, creatureEntry))
             {
-                GetVehicleKit()->Reset();
-
+                // Send others that we now have a vehicle
                 WorldPacket l_Data(SMSG_MOVE_SET_VEHICLE_REC_ID, 16 + 2 + 4 + 4);
                 l_Data.appendPackGUID(GetGUID());   ///< MoverGUID
                 l_Data << uint32(0);                ///< SequenceIndex
@@ -14214,7 +14210,7 @@ bool Unit::_IsValidAttackTarget(Unit const* target, SpellInfo const* bySpell, Wo
     /// Pointer cannot be null in well-defined C++ code; comparison may be assumed to always evaluate to false
     if (target == nullptr)
     {
-        sLog->outAshran("Unit::_IsValidAttackTarget, target is null!");
+        TC_LOG_ERROR("server.worldserver", "Unit::_IsValidAttackTarget, target is null!");
         return false;
     }
 
@@ -14962,7 +14958,7 @@ void Unit::SetSpeed(UnitMoveType p_MovementType, float rate, bool forced)
 
 void Unit::SendAdjustSplineDuration(float p_Scale)
 {
-    WorldPacket l_Data(Opcodes::SMSG_ADJUST_SPLINE_DURATION);
+    WorldPacket l_Data(SMSG_ADJUST_SPLINE_DURATION);
     l_Data.appendPackGUID(GetGUID());
     l_Data << float(p_Scale);
     SendMessageToSetInRange(&l_Data, GetMap()->GetVisibilityRange(), false);
@@ -14970,7 +14966,7 @@ void Unit::SendAdjustSplineDuration(float p_Scale)
 
 void Unit::SendFlightSplineSync(float p_SplineDist)
 {
-    WorldPacket l_Data(Opcodes::SMSG_FLIGHT_SPLINE_SYNC);
+    WorldPacket l_Data(SMSG_FLIGHT_SPLINE_SYNC);
     l_Data.appendPackGUID(GetGUID());
     l_Data << float(p_SplineDist);
     SendMessageToSetInRange(&l_Data, GetMap()->GetVisibilityRange(), false);
@@ -14990,7 +14986,9 @@ void Unit::setDeathState(DeathState s)
         if (IsNonMeleeSpellCasted(false))
             InterruptNonMeleeSpells(false);
 
-        ExitVehicle();
+        ExitVehicle();                                      // Exit vehicle before calling RemoveAllControlled
+        // vehicles use special type of charm that is not removed by the next function
+        // triggering an assert
 
         UnsummonAllTotems();
         RemoveAllControlled();
@@ -16387,16 +16385,16 @@ void Unit::RemoveFromWorld()
 
         if (GetCharmerGUID())
         {
-            sLog->outFatal(LOG_FILTER_UNITS, "Unit %u has charmer guid when removed from world", GetEntry());
-            ASSERT(false);
+            TC_LOG_FATAL("entities.unit", "Unit %u has charmer guid when removed from world", GetEntry());
+            ABORT();
         }
 
         if (Unit* owner = GetOwner())
         {
             if (owner->m_Controlled.find(this) != owner->m_Controlled.end())
             {
-                sLog->outFatal(LOG_FILTER_UNITS, "Unit %u is in controlled list of %u when removed from world", GetEntry(), owner->GetEntry());
-                ASSERT(false);
+                TC_LOG_FATAL("entities.unit", "Unit %u is in controlled list of %u when removed from world", GetEntry(), owner->GetEntry());
+                ABORT();
             }
         }
 
@@ -17690,7 +17688,7 @@ void Unit::SendPetAIReaction(uint64 p_Guid)
 
 void Unit::SendItemBonusDebug(uint32 p_Quantity, std::string p_Text, Player* p_Target /*= nullptr*/)
 {
-    WorldPacket l_Data(Opcodes::SMSG_ITEM_BONUS_DEBUG);
+    WorldPacket l_Data(SMSG_ITEM_BONUS_DEBUG);
 
     l_Data.appendPackGUID(GetGUID());
     l_Data << int32(p_Quantity);
@@ -17905,15 +17903,15 @@ void Unit::UpdateStackOnDuration(uint32 p_Time)
 
 void Unit::GetAttackableUnitListInRange(std::list<Unit*> &list, float fMaxSearchRange) const
 {
-    CellCoord p(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+    CellCoord p(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
     Cell cell(p);
     cell.SetNoCreate();
 
-    JadeCore::AnyUnitInObjectRangeCheck u_check(this, fMaxSearchRange);
-    JadeCore::UnitListSearcher<JadeCore::AnyUnitInObjectRangeCheck> searcher(this, list, u_check);
+    Trinity::AnyUnitInObjectRangeCheck u_check(this, fMaxSearchRange);
+    Trinity::UnitListSearcher<Trinity::AnyUnitInObjectRangeCheck> searcher(this, list, u_check);
 
-    TypeContainerVisitor<JadeCore::UnitListSearcher<JadeCore::AnyUnitInObjectRangeCheck>, WorldTypeMapContainer > world_unit_searcher(searcher);
-    TypeContainerVisitor<JadeCore::UnitListSearcher<JadeCore::AnyUnitInObjectRangeCheck>, GridTypeMapContainer >  grid_unit_searcher(searcher);
+    TypeContainerVisitor<Trinity::UnitListSearcher<Trinity::AnyUnitInObjectRangeCheck>, WorldTypeMapContainer > world_unit_searcher(searcher);
+    TypeContainerVisitor<Trinity::UnitListSearcher<Trinity::AnyUnitInObjectRangeCheck>, GridTypeMapContainer >  grid_unit_searcher(searcher);
 
     cell.Visit(p, world_unit_searcher, *GetMap(), *this, fMaxSearchRange);
     cell.Visit(p, grid_unit_searcher, *GetMap(), *this, fMaxSearchRange);
@@ -17921,15 +17919,15 @@ void Unit::GetAttackableUnitListInRange(std::list<Unit*> &list, float fMaxSearch
 
 void Unit::GetAreatriggerListInRange(std::list<AreaTrigger*>& p_List, float p_Range) const
 {
-    CellCoord l_Coords(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+    CellCoord l_Coords(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
     Cell l_Cell(l_Coords);
     l_Cell.SetNoCreate();
 
-    JadeCore::AnyAreatriggerInObjectRangeCheck l_Check(this, p_Range);
-    JadeCore::AreaTriggerListSearcher<JadeCore::AnyAreatriggerInObjectRangeCheck> searcher(this, p_List, l_Check);
+    Trinity::AnyAreatriggerInObjectRangeCheck l_Check(this, p_Range);
+    Trinity::AreaTriggerListSearcher<Trinity::AnyAreatriggerInObjectRangeCheck> searcher(this, p_List, l_Check);
 
-    TypeContainerVisitor<JadeCore::AreaTriggerListSearcher<JadeCore::AnyAreatriggerInObjectRangeCheck>, WorldTypeMapContainer> l_WorldSearcher(searcher);
-    TypeContainerVisitor<JadeCore::AreaTriggerListSearcher<JadeCore::AnyAreatriggerInObjectRangeCheck>, GridTypeMapContainer>  l_GridSearcher(searcher);
+    TypeContainerVisitor<Trinity::AreaTriggerListSearcher<Trinity::AnyAreatriggerInObjectRangeCheck>, WorldTypeMapContainer> l_WorldSearcher(searcher);
+    TypeContainerVisitor<Trinity::AreaTriggerListSearcher<Trinity::AnyAreatriggerInObjectRangeCheck>, GridTypeMapContainer>  l_GridSearcher(searcher);
 
     l_Cell.Visit(l_Coords, l_WorldSearcher, *GetMap(), *this, p_Range);
     l_Cell.Visit(l_Coords, l_GridSearcher, *GetMap(), *this, p_Range);
@@ -17937,15 +17935,15 @@ void Unit::GetAreatriggerListInRange(std::list<AreaTrigger*>& p_List, float p_Ra
 
 void Unit::GetConversationListInRange(std::list<Conversation*>& p_List, float p_Range) const
 {
-    CellCoord l_Coords(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+    CellCoord l_Coords(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
     Cell l_Cell(l_Coords);
     l_Cell.SetNoCreate();
 
-    JadeCore::AnyConversationInObjectRangeCheck l_Check(this, p_Range);
-    JadeCore::ConversationListSearcher<JadeCore::AnyConversationInObjectRangeCheck> searcher(this, p_List, l_Check);
+    Trinity::AnyConversationInObjectRangeCheck l_Check(this, p_Range);
+    Trinity::ConversationListSearcher<Trinity::AnyConversationInObjectRangeCheck> searcher(this, p_List, l_Check);
 
-    TypeContainerVisitor<JadeCore::ConversationListSearcher<JadeCore::AnyConversationInObjectRangeCheck>, WorldTypeMapContainer> l_WorldSearcher(searcher);
-    TypeContainerVisitor<JadeCore::ConversationListSearcher<JadeCore::AnyConversationInObjectRangeCheck>, GridTypeMapContainer>  l_GridSearcher(searcher);
+    TypeContainerVisitor<Trinity::ConversationListSearcher<Trinity::AnyConversationInObjectRangeCheck>, WorldTypeMapContainer> l_WorldSearcher(searcher);
+    TypeContainerVisitor<Trinity::ConversationListSearcher<Trinity::AnyConversationInObjectRangeCheck>, GridTypeMapContainer>  l_GridSearcher(searcher);
 
     l_Cell.Visit(l_Coords, l_WorldSearcher, *GetMap(), *this, p_Range);
     l_Cell.Visit(l_Coords, l_GridSearcher, *GetMap(), *this, p_Range);
@@ -17953,15 +17951,15 @@ void Unit::GetConversationListInRange(std::list<Conversation*>& p_List, float p_
 
 void Unit::GetAreaTriggerListWithSpellIDInRange(std::list<AreaTrigger*>& p_List, uint32 p_SpellID, float p_Range) const
 {
-    CellCoord l_Coords(JadeCore::ComputeCellCoord(GetPositionX(), GetPositionY()));
+    CellCoord l_Coords(Trinity::ComputeCellCoord(GetPositionX(), GetPositionY()));
     Cell l_Cell(l_Coords);
     l_Cell.SetNoCreate();
 
-    JadeCore::AnyAreatriggerInObjectRangeCheck l_Check(this, p_Range);
-    JadeCore::AreaTriggerListSearcher<JadeCore::AnyAreatriggerInObjectRangeCheck> searcher(this, p_List, l_Check);
+    Trinity::AnyAreatriggerInObjectRangeCheck l_Check(this, p_Range);
+    Trinity::AreaTriggerListSearcher<Trinity::AnyAreatriggerInObjectRangeCheck> searcher(this, p_List, l_Check);
 
-    TypeContainerVisitor<JadeCore::AreaTriggerListSearcher<JadeCore::AnyAreatriggerInObjectRangeCheck>, WorldTypeMapContainer> l_WorldSearcher(searcher);
-    TypeContainerVisitor<JadeCore::AreaTriggerListSearcher<JadeCore::AnyAreatriggerInObjectRangeCheck>, GridTypeMapContainer>  l_GridSearcher(searcher);
+    TypeContainerVisitor<Trinity::AreaTriggerListSearcher<Trinity::AnyAreatriggerInObjectRangeCheck>, WorldTypeMapContainer> l_WorldSearcher(searcher);
+    TypeContainerVisitor<Trinity::AreaTriggerListSearcher<Trinity::AnyAreatriggerInObjectRangeCheck>, GridTypeMapContainer>  l_GridSearcher(searcher);
 
     l_Cell.Visit(l_Coords, l_WorldSearcher, *GetMap(), *this, p_Range);
     l_Cell.Visit(l_Coords, l_GridSearcher, *GetMap(), *this, p_Range);
@@ -17981,8 +17979,8 @@ void Unit::GetAreaTriggerListWithSpellIDInRange(std::list<AreaTrigger*>& p_List,
 Unit* Unit::SelectNearbyTarget(Unit* exclude /*= NULL*/, float dist /*= NOMINAL_MELEE_RANGE*/, uint32 p_ExludeAuraID /*= 0*/, bool p_ExcludeVictim /*= true*/, bool p_Alive /*= true*/, bool p_ExcludeStealthVictim /*=false*/, bool p_CheckValidAttack /*= false*/) const
 {
     std::list<Unit*> l_Targets;
-    JadeCore::AnyUnfriendlyUnitInObjectRangeCheck u_check(this, this, dist);
-    JadeCore::UnitListSearcher<JadeCore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(this, l_Targets, u_check);
+    Trinity::AnyUnfriendlyUnitInObjectRangeCheck u_check(this, this, dist);
+    Trinity::UnitListSearcher<Trinity::AnyUnfriendlyUnitInObjectRangeCheck> searcher(this, l_Targets, u_check);
     VisitNearbyObject(dist, searcher);
 
     // remove current target
@@ -18013,7 +18011,7 @@ Unit* Unit::SelectNearbyTarget(Unit* exclude /*= NULL*/, float dist /*= NOMINAL_
         return nullptr;
 
     if (p_ExludeAuraID)
-        l_Targets.remove_if(JadeCore::UnitAuraCheck(true, p_ExludeAuraID));
+        l_Targets.remove_if(Trinity::UnitAuraCheck(true, p_ExludeAuraID));
 
     // no appropriate targets
     if (l_Targets.empty())
@@ -18038,14 +18036,14 @@ Unit* Unit::SelectNearbyTarget(Unit* exclude /*= NULL*/, float dist /*= NOMINAL_
         return nullptr;
 
     // select random
-    return JadeCore::Containers::SelectRandomContainerElement(l_Targets);
+    return Trinity::Containers::SelectRandomContainerElement(l_Targets);
 }
 
 Unit* Unit::SelectNearbyAlly(Unit* exclude, float dist, bool p_CheckValidAssist /*= false*/) const
 {
     std::list<Unit*> targets;
-    JadeCore::AnyFriendlyUnitInObjectRangeCheck u_check(this, this, dist);
-    JadeCore::UnitListSearcher<JadeCore::AnyFriendlyUnitInObjectRangeCheck> searcher(this, targets, u_check);
+    Trinity::AnyFriendlyUnitInObjectRangeCheck u_check(this, this, dist);
+    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> searcher(this, targets, u_check);
     VisitNearbyObject(dist, searcher);
 
     if (exclude)
@@ -18067,14 +18065,14 @@ Unit* Unit::SelectNearbyAlly(Unit* exclude, float dist, bool p_CheckValidAssist 
         return NULL;
 
     // select random
-    return JadeCore::Containers::SelectRandomContainerElement(targets);
+    return Trinity::Containers::SelectRandomContainerElement(targets);
 }
 
 Unit* Unit::SelectNearbyMostInjuredAlly(Unit* p_Exclude /*= nullptr*/, float p_Dist /*= NOMINAL_MELEE_RANGE*/, uint32 p_ExcludeEntry /*= 0*/) const
 {
     std::list<Unit*> l_Targets;
-    JadeCore::AnyFriendlyUnitInObjectRangeCheck l_Check(this, this, p_Dist);
-    JadeCore::UnitListSearcher<JadeCore::AnyFriendlyUnitInObjectRangeCheck> l_Searcher(this, l_Targets, l_Check);
+    Trinity::AnyFriendlyUnitInObjectRangeCheck l_Check(this, this, p_Dist);
+    Trinity::UnitListSearcher<Trinity::AnyFriendlyUnitInObjectRangeCheck> l_Searcher(this, l_Targets, l_Check);
     VisitNearbyObject(p_Dist, l_Searcher);
 
     if (p_Exclude)
@@ -18105,7 +18103,7 @@ Unit* Unit::SelectNearbyMostInjuredAlly(Unit* p_Exclude /*= nullptr*/, float p_D
     if (l_Targets.empty())
         return nullptr;
 
-    l_Targets.sort(JadeCore::HealthPctOrderPred(true));
+    l_Targets.sort(Trinity::HealthPctOrderPred(true));
 
     /// Select most injured
     return l_Targets.front();
@@ -18397,7 +18395,7 @@ bool Unit::InitTamedPet(Pet* pet, uint8 level, uint32 spell_id)
 
     if (!pet->InitStatsForLevel(level))
     {
-        sLog->outError(LOG_FILTER_UNITS, "Pet::InitStatsForLevel() failed for creature (Entry: %u)!", pet->GetEntry());
+        TC_LOG_ERROR("entities.unit", "Pet::InitStatsForLevel() failed for creature (Entry: %u)!", pet->GetEntry());
         return false;
     }
 
@@ -18636,7 +18634,7 @@ void Unit::PlayOneShotAnimKit(uint32 id)
 
 void Unit::PlayOrphanSpellVisual(G3D::Vector3 p_Source, G3D::Vector3 p_Orientation, G3D::Vector3 p_Target, int32 p_Visual, float p_TravelSpeed, uint64 p_TargetGuid, bool p_SpeedAsTime)
 {
-    WorldPacket l_Data(Opcodes::SMSG_PLAY_ORPHAN_SPELL_VISUAL, 100);
+    WorldPacket l_Data(SMSG_PLAY_ORPHAN_SPELL_VISUAL, 100);
 
     l_Data.WriteVector3(p_Source);
     l_Data.WriteVector3(p_Orientation);
@@ -18655,7 +18653,7 @@ void Unit::PlayOrphanSpellVisual(G3D::Vector3 p_Source, G3D::Vector3 p_Orientati
 
 void Unit::CancelOrphanSpellVisual(int32 p_SpellVisualID)
 {
-    WorldPacket l_Data(Opcodes::SMSG_CANCEL_ORPHAN_SPELL_VISUAL, 4);
+    WorldPacket l_Data(SMSG_CANCEL_ORPHAN_SPELL_VISUAL, 4);
     l_Data << int32(p_SpellVisualID);
     SendMessageToSetInRange(&l_Data, GetMap()->GetVisibilityRange(), false);
 }
@@ -18781,8 +18779,8 @@ void Unit::Kill(Unit* p_KilledVictim, bool p_DurabilityLoss, SpellInfo const* p_
         {
             Loot* l_Loot = &l_KilledCreature->loot;
 
-            if (l_KilledCreature->lootForPickPocketed)
-                l_KilledCreature->lootForPickPocketed = false;
+            if (l_KilledCreature->loot.loot_type == LOOT_PICKPOCKETING)
+                l_KilledCreature->ResetPickPocketRefillTimer();
 
             l_Loot->clear();
 
@@ -18989,9 +18987,11 @@ void Unit::Kill(Unit* p_KilledVictim, bool p_DurabilityLoss, SpellInfo const* p_
         {
             l_KilledCreature->DeleteThreatList();
 
-            CreatureTemplate const* l_CreatureTemplate = l_KilledCreature->GetCreatureTemplate();
-            if (l_CreatureTemplate && (l_CreatureTemplate->lootid || l_CreatureTemplate->maxgold > 0))
+                // must be after setDeathState which resets dynamic flags
+            if (!l_KilledCreature->loot.isLooted())
                 l_KilledCreature->SetFlag(OBJECT_FIELD_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE);
+            else
+                    l_KilledCreature->AllLootRemovedFromCorpse();
         }
 
         /// Call KilledUnit for creatures, this needs to be called after the lootable flag is set
@@ -19030,16 +19030,16 @@ void Unit::Kill(Unit* p_KilledVictim, bool p_DurabilityLoss, SpellInfo const* p_
                         if (Player* l_Player = l_Itr->getSource())
                         {
                             uint32 l_DungeonID = l_Player->GetGroup() ? sLFGMgr->GetDungeon(l_Player->GetGroup()->GetGUID()) : 0;
-                            if (!l_KilledCreature || l_Player->IsAtGroupRewardDistance(l_KilledCreature))
-                                sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
+                            //if (!l_KilledCreature || l_Player->IsAtGroupRewardDistance(l_KilledCreature))
+                                //sLFGMgr->RewardDungeonDoneFor(l_DungeonID, l_Player);
                         }
                     }
                 }
 
                 /// Handle loot assignation for LFR
                 Player* l_Player = l_PlayerList.begin()->getSource();
-                if (l_Player && l_Player->GetGroup())
-                    sLFGMgr->AutomaticLootAssignation(l_KilledCreature, l_Player->GetGroup());
+                //if (l_Player && l_Player->GetGroup())
+                    //sLFGMgr->AutomaticLootAssignation(l_KilledCreature, l_Player->GetGroup());
             }
 
             /// @TODO: do instance binding anyway if the charmer/owner is offline
@@ -19509,14 +19509,17 @@ bool Unit::SetCharmedBy(Unit* charmer, CharmType type, AuraApplication const* au
 
     // dismount players when charmed
     if (IsPlayer())
-        Dismount();
+        RemoveAurasByType(SPELL_AURA_MOUNTED);
+
+    if (charmer->GetTypeId() == TYPEID_PLAYER)
+        charmer->RemoveAurasByType(SPELL_AURA_MOUNTED);
 
     ASSERT(type != CHARM_TYPE_POSSESS || charmer->IsPlayer());
     ASSERT((type == CHARM_TYPE_VEHICLE) == IsVehicle());
 
     if (this == charmer)
     {
-        sLog->outFatal(LOG_FILTER_UNITS, "Unit::SetCharmedBy: Unit %u (GUID %u) is trying to charm itself!", GetEntry(), GetGUIDLow());
+        TC_LOG_FATAL("entities.unit", "Unit::SetCharmedBy: Unit %u (GUID %u) is trying to charm itself!", GetEntry(), GetGUIDLow());
         return false;
     }
 
@@ -19660,9 +19663,9 @@ void Unit::RemoveCharmedBy(Unit* charmer)
         charmer = GetCharmer();
     if (charmer != GetCharmer()) // one aura overrides another?
     {
-//        sLog->outFatal(LOG_FILTER_UNITS, "Unit::RemoveCharmedBy: this: " UI64FMTD " true charmer: " UI64FMTD " false charmer: " UI64FMTD,
+//        TC_LOG_FATAL("entities.unit", "Unit::RemoveCharmedBy: this: " UI64FMTD " true charmer: " UI64FMTD " false charmer: " UI64FMTD,
 //            GetGUID(), GetCharmerGUID(), charmer->GetGUID());
-//        ASSERT(false);
+//        ABORT();
         return;
     }
 
@@ -20040,7 +20043,7 @@ void Unit::SendPlaySpellVisualKit(uint32 p_KitRecID, uint32 p_KitType, int32 p_D
 
 void Unit::CancelSpellVisualKit(int32 p_SpellVisualKitID)
 {
-    WorldPacket l_Data(Opcodes::SMSG_CANCEL_SPELL_VISUAL_KIT, 16 + 2 + 4);
+    WorldPacket l_Data(SMSG_CANCEL_SPELL_VISUAL_KIT, 16 + 2 + 4);
     l_Data.appendPackGUID(GetGUID());
     l_Data << int32(p_SpellVisualKitID);
     SendMessageToSetInRange(&l_Data, GetMap()->GetVisibilityRange(), true);
@@ -20083,7 +20086,7 @@ void Unit::SendPlaySpellVisual(uint32 p_ID, Unit* p_Target, float p_Speed, float
 
 void Unit::CancelSpellVisual(int32 p_SpellVisualID)
 {
-    WorldPacket l_Data(Opcodes::SMSG_CANCEL_SPELL_VISUAL);
+    WorldPacket l_Data(SMSG_CANCEL_SPELL_VISUAL);
     l_Data.appendPackGUID(GetGUID());
     l_Data << int32(p_SpellVisualID);
     SendMessageToSetInRange(&l_Data, GetMap()->GetVisibilityRange(), false);
@@ -20262,7 +20265,7 @@ public:
 
     virtual bool Execute(uint64 , uint32)
     {
-        JadeCore::AIRelocationNotifier notifier(m_owner);
+        Trinity::AIRelocationNotifier notifier(m_owner);
         m_owner.VisitNearbyObject(60.0f, notifier);
         return true;
     }
@@ -21465,7 +21468,7 @@ bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
         // if (!spellEntry) should be checked at npc_spellclick load
         if (!spellEntry)
         {
-            sLog->outAshran("HandleSpellClick: spellEntry pointer is NULL!!");
+            TC_LOG_ERROR("server.worldserver", "HandleSpellClick: spellEntry pointer is NULL!!");
             return false;
         }
 
@@ -21491,7 +21494,7 @@ bool Unit::HandleSpellClick(Unit* clicker, int8 seatId)
             else    // This can happen during Player::_LoadAuras
             {
                 int32 bp0[SpellEffIndex::MAX_EFFECTS];
-                for (uint8 eff = 0; eff < SpellEffIndex::MAX_EFFECTS; eff++)
+                for (uint32 eff = 0; eff < SpellEffIndex::MAX_EFFECTS; eff++)
                     bp0[eff] = spellEntry->Effects[i].BasePoints;
                 bp0[i] = seatId + 1;
                 Aura::TryRefreshStackOrCreate(spellEntry, MAX_EFFECT_MASK, this, clicker, &bp0[0], NULL, origCasterGUID);
@@ -21542,41 +21545,14 @@ void Unit::_EnterVehicle(Vehicle* vehicle, int8 seatId, AuraApplication const* a
     if (Player* player = ToPlayer())
     {
         if (vehicle->GetBase()->IsPlayer() && player->isInCombat())
-            return;
-
-        InterruptNonMeleeSpells(false);
-        player->StopCastingCharm();
-        player->StopCastingBindSight();
-        Dismount();
-        RemoveAurasByType(SPELL_AURA_MOUNTED);
-
-        // drop flag at invisible in bg
-        if (Battleground* bg = player->GetBattleground())
-            bg->EventPlayerDroppedFlag(player);
-
-        WorldPacket l_Data(SMSG_ON_CANCEL_EXPECTED_RIDE_VEHICLE_AURA, 0);
-        player->GetSession()->SendPacket(&l_Data);
-
-        switch (vehicle->GetVehicleInfo()->m_ID)
         {
-            case 533:   ///< Bone Spike
-            case 647:   ///< Bone Spike
-            case 648:   ///< Bone Spike
-            case 3417:  ///< Grasping Earth
-                break;
-            default:
-                player->UnsummonPetTemporaryIfAny();
-                break;
+            vehicle->GetBase()->RemoveAura(const_cast<AuraApplication*>(aurApp));
+            return;
         }
     }
 
     ASSERT(!m_vehicle);
-    m_vehicle = vehicle;
-    if (!m_vehicle->AddPassenger(this, seatId))
-    {
-        m_vehicle = NULL;
-        return;
-    }
+    (void)vehicle->AddPassenger(this, seatId);
 }
 
 void Unit::ChangeSeat(int8 seatId, bool next)
@@ -21584,18 +21560,25 @@ void Unit::ChangeSeat(int8 seatId, bool next)
     if (!m_vehicle)
         return;
 
-    if (seatId < 0)
-    {
-        seatId = m_vehicle->GetNextEmptySeat(GetTransSeat(), next);
-        if (seatId < 0)
-            return;
-    }
-    else if (seatId == GetTransSeat() || !m_vehicle->HasEmptySeat(seatId))
+    // Don't change if current and new seat are identical
+    if (seatId == GetTransSeat())
         return;
 
+    SeatMap::const_iterator seat = (seatId < 0 ? m_vehicle->GetNextEmptySeat(GetTransSeat(), next) : m_vehicle->Seats.find(seatId));
+    // The second part of the check will only return true if seatId >= 0. @Vehicle::GetNextEmptySeat makes sure of that.
+    if (seat == m_vehicle->Seats.end() || seat->second.Passenger)
+        return;
+
+    // Todo: the functions below could be consolidated and refactored to take
+    // SeatMap::const_iterator as parameter, to save redundant map lookups.
+
     m_vehicle->RemovePassenger(this);
-    if (!m_vehicle->AddPassenger(this, seatId))
-        ASSERT(false);
+    // Set m_vehicle to NULL before adding passenger as adding new passengers is handled asynchronously
+    // and someone may call ExitVehicle again before passenger is added to new seat
+    Vehicle* veh = m_vehicle;
+    m_vehicle = NULL;
+    if (!veh->AddPassenger(this, seatId))
+        ABORT();
 }
 
 void Unit::ExitVehicle(Position const* exitPosition)
@@ -21673,9 +21656,9 @@ void Unit::_ExitVehicle(Position const* exitPosition)
         player->SummonLastSummonedBattlePet();
     }
 
-    if (vehicle->GetBase()->HasUnitTypeMask(UNIT_MASK_MINION))
+    if (vehicle->GetBase()->HasUnitTypeMask(UNIT_MASK_MINION) && vehicle->GetBase()->GetTypeId() == TYPEID_UNIT)
         if (((Minion*)vehicle->GetBase())->GetOwner() == this)
-            vehicle->Dismiss();
+            vehicle->GetBase()->ToCreature()->DespawnOrUnsummon();
 
     if (HasUnitTypeMask(UNIT_MASK_ACCESSORY))
     {
@@ -22117,7 +22100,7 @@ void Unit::SendTeleportPacket(Position &p_NewPosition)
 bool Unit::UpdatePosition(float x, float y, float z, float orientation, bool teleport)
 {
     // prevent crash when a bad coord is sent by the client
-    if (!JadeCore::IsValidMapCoord(x, y, z, orientation))
+    if (!Trinity::IsValidMapCoord(x, y, z, orientation))
         return false;
 
     bool turn = (GetOrientation() != orientation);
@@ -22266,31 +22249,31 @@ void Unit::StopAttackFaction(uint32 faction_id)
 
 void Unit::OutDebugInfo() const
 {
-    sLog->outError(LOG_FILTER_UNITS, "Unit::OutDebugInfo");
-    sLog->outInfo(LOG_FILTER_UNITS, "GUID " UI64FMTD ", entry %u, type %u, name %s", GetGUID(), GetEntry(), (uint32)GetTypeId(), GetName());
-    sLog->outInfo(LOG_FILTER_UNITS, "OwnerGUID " UI64FMTD ", MinionGUID " UI64FMTD ", CharmerGUID " UI64FMTD ", CharmedGUID " UI64FMTD, GetOwnerGUID(), GetMinionGUID(), GetCharmerGUID(), GetCharmGUID());
-    sLog->outInfo(LOG_FILTER_UNITS, "In world %u, unit type mask %u", (uint32)(IsInWorld() ? 1 : 0), m_unitTypeMask);
+    TC_LOG_ERROR("entities.unit", "Unit::OutDebugInfo");
+    TC_LOG_INFO("entities.unit", "GUID " UI64FMTD ", entry %u, type %u, name %s", GetGUID(), GetEntry(), (uint32)GetTypeId(), GetName());
+    TC_LOG_INFO("entities.unit", "OwnerGUID " UI64FMTD ", MinionGUID " UI64FMTD ", CharmerGUID " UI64FMTD ", CharmedGUID " UI64FMTD, GetOwnerGUID(), GetMinionGUID(), GetCharmerGUID(), GetCharmGUID());
+    TC_LOG_INFO("entities.unit", "In world %u, unit type mask %u", (uint32)(IsInWorld() ? 1 : 0), m_unitTypeMask);
     if (IsInWorld())
-        sLog->outInfo(LOG_FILTER_UNITS, "Mapid %u", GetMapId());
+        TC_LOG_INFO("entities.unit", "Mapid %u", GetMapId());
 
     std::ostringstream o;
     o << "Summon Slot: ";
     for (uint32 i = 0; i < MAX_SUMMON_SLOT; ++i)
         o << m_SummonSlot[i] << ", ";
 
-    sLog->outInfo(LOG_FILTER_UNITS, "%s", o.str().c_str());
+    TC_LOG_INFO("entities.unit", "%s", o.str().c_str());
     o.str("");
 
     o << "Controlled List: ";
     for (ControlList::const_iterator itr = m_Controlled.begin(); itr != m_Controlled.end(); ++itr)
         o << (*itr)->GetGUID() << ", ";
-    sLog->outInfo(LOG_FILTER_UNITS, "%s", o.str().c_str());
+    TC_LOG_INFO("entities.unit", "%s", o.str().c_str());
     o.str("");
 
     o << "Aura List: ";
     for (AuraApplicationMap::const_iterator itr = m_appliedAuras.begin(); itr != m_appliedAuras.end(); ++itr)
         o << itr->first << ", ";
-    sLog->outInfo(LOG_FILTER_UNITS, "%s", o.str().c_str());
+    TC_LOG_INFO("entities.unit", "%s", o.str().c_str());
     o.str("");
 
     if (IsVehicle())
@@ -22299,11 +22282,11 @@ void Unit::OutDebugInfo() const
         for (SeatMap::iterator itr = GetVehicleKit()->Seats.begin(); itr != GetVehicleKit()->Seats.end(); ++itr)
             if (Unit* passenger = ObjectAccessor::GetUnit(*GetVehicleBase(), itr->second.Passenger))
                 o << passenger->GetGUID() << ", ";
-        sLog->outInfo(LOG_FILTER_UNITS, "%s", o.str().c_str());
+        TC_LOG_INFO("entities.unit", "%s", o.str().c_str());
     }
 
     if (GetVehicle())
-        sLog->outInfo(LOG_FILTER_UNITS, "On vehicle %u.", GetVehicleBase()->GetEntry());
+        TC_LOG_INFO("entities.unit", "On vehicle %u.", GetVehicleBase()->GetEntry());
 }
 
 uint32 Unit::GetRemainingPeriodicAmount(uint64 caster, uint32 spellId, AuraType auraType, uint8 effectIndex) const
@@ -23281,4 +23264,33 @@ bool Unit::CanMoveDuringCast() const
 	}
 
 	return false;
+}
+
+void Unit::CastWithDelay(uint32 delay, Unit* victim, uint32 spellid, bool triggered, bool repeat)
+{
+    class CastDelayEvent : public BasicEvent
+    {
+    public:
+        CastDelayEvent(Unit* _me, uint64 _victimGuid, uint32 const& _spellId, bool const& _triggered, bool const& _repeat, uint32 const& _delay) :
+            me(_me), victimGuid(_victimGuid), spellId(_spellId), triggered(_triggered), repeat(_repeat), delay(_delay) { }
+
+        bool Execute(uint64 /*execTime*/, uint32 /*diff*/)
+        {
+            Unit* victim = ObjectAccessor::GetUnit(*me, victimGuid);
+            me->CastSpell(victim, spellId, triggered);
+            if (repeat)
+                me->CastWithDelay(delay, victim, spellId, triggered, repeat);
+            return true;
+        }
+
+    private:
+        Unit* me;
+        uint64 victimGuid;
+        uint32 const spellId;
+        uint32 const delay;
+        bool const triggered;
+        bool const repeat;
+    };
+
+    m_Events.AddEvent(new CastDelayEvent(this, victim ? victim->GetGUID() : 0, spellid, triggered, repeat, delay), m_Events.CalculateTime(delay));
 }

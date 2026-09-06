@@ -40,6 +40,10 @@
 #   define strnicmp strncasecmp 
 #endif
 
+#ifdef __CYGWIN__
+#define stat64 stat
+#endif
+
 namespace G3D {
 
 static FileSystem* common = NULL;
@@ -137,6 +141,9 @@ void FileSystem::Dir::computeZipListing(const std::string& zipfile, const std::s
     
     zip_close(z);
     z = NULL;
+#else
+    (void)zipfile;
+    (void)_pathInsideZipfile;
 #endif
 }
 

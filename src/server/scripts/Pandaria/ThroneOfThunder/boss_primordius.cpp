@@ -277,14 +277,6 @@ class boss_primordius : public CreatureScript
                     m_Instance->SendEncounterUnit(ENCOUNTER_FRAME_DISENGAGE, me);
                     m_Instance->SetBossState(DATA_PRIMORDIUS, DONE);
                 }
-
-                if (me->GetMap()->IsLFR())
-                {
-                    me->SetLootRecipient(NULL);
-                    Player* l_Player = me->GetMap()->GetPlayers().begin()->getSource();
-                    if (l_Player && l_Player->GetGroup())
-                        sLFGMgr->AutomaticLootDistribution(me, l_Player->GetGroup());
-                }
             }
 
             void RegeneratePower(Powers p_Power, int32& p_Value)
@@ -761,7 +753,7 @@ class spell_primordius_evolution: public SpellScriptLoader
                     /// If Primordius has 4 auras or more from the table, one of those auras is removed, then a new random one is added.
                     else if (l_AuraList.size() >= 4)
                     {
-                        JadeCore::RandomResizeList(l_AuraList, l_AuraList.size());
+                        Trinity::RandomResizeList(l_AuraList, l_AuraList.size());
 
                         if (l_Target->HasAura(l_AuraList.front()))
                             l_Target->RemoveAura(l_AuraList.front());
@@ -794,7 +786,7 @@ class spell_primordius_evolution: public SpellScriptLoader
                 /// If Primordius has 3 auras or more from the table, one of those auras is removed, then a new random one is added.
                 else if (l_AuraList.size() >= 3)
                 {
-                    JadeCore::RandomResizeList(l_AuraList, l_AuraList.size());
+                    Trinity::RandomResizeList(l_AuraList, l_AuraList.size());
 
                     if (l_Target->HasAura(l_AuraList.front()))
                         l_Target->RemoveAura(l_AuraList.front());

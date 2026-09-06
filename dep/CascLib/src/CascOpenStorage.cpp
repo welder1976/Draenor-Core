@@ -18,7 +18,7 @@
 // Local structures
 
 // Size of one segment in the ENCODING table
-// The segment is filled by entries of type 
+// The segment is filled by entries of type
 #define CASC_ENCODING_SEGMENT_SIZE      0x1000
 
 typedef struct _BLOCK_SIZE_AND_HASH
@@ -116,7 +116,7 @@ static bool IsIndexFileName_V1(const TCHAR * szFileName)
 static bool IsIndexFileName_V2(const TCHAR * szFileName)
 {
     // Check if the name looks like a valid index file
-    return (_tcslen(szFileName) == 14 && 
+    return (_tcslen(szFileName) == 14 &&
             _tcsspn(szFileName, _T("0123456789aAbBcCdDeEfF")) == 0x0A &&
             _tcsicmp(szFileName + 0x0A, _T(".idx")) == 0);
 }
@@ -166,13 +166,26 @@ static bool CutLastPathPart(TCHAR * szWorkPath)
 {
     size_t nLength = _tcslen(szWorkPath);
 
-    for(nLength = _tcslen(szWorkPath); nLength > 0; nLength--)
+    // Go one character back
+    if(nLength > 0)
+        nLength--;
+
+    // Cut ending (back)slashes, if any
+    while(nLength > 0 && (szWorkPath[nLength] == _T('\\') || szWorkPath[nLength] == _T('/')))
+        nLength--;
+
+    // Cut the last path part
+    while(nLength > 0)
     {
-        if(szWorkPath[nLength] == '\\' || szWorkPath[nLength] == '/')
+        // End of path?
+        if(szWorkPath[nLength] == _T('\\') || szWorkPath[nLength] == _T('/'))
         {
             szWorkPath[nLength] = 0;
             return true;
         }
+
+        // Go one character back
+        nLength--;
     }
 
     return false;
@@ -354,7 +367,7 @@ static int VerifyAndParseKeyMapping_V1(PCASC_MAPPING_TABLE pKeyMapping, DWORD Ke
     // Verify the format
     if(pIndexHeader->field_0 != 0x0005)
         return ERROR_NOT_SUPPORTED;
-    if(pIndexHeader->KeyIndex != KeyIndex)              
+    if(pIndexHeader->KeyIndex != KeyIndex)
         return ERROR_NOT_SUPPORTED;
     if(pIndexHeader->field_8 == 0)
         return ERROR_NOT_SUPPORTED;
@@ -421,7 +434,7 @@ static int VerifyAndParseKeyMapping_V2(PCASC_MAPPING_TABLE pKeyMapping, DWORD Ke
     FilePosition = (sizeof(BLOCK_SIZE_AND_HASH) + pSizeAndHash->cbBlockSize + 0x0F) & 0xFFFFFFF0;
     if((FilePosition + 0x08) > pKeyMapping->cbFileData)
         return ERROR_BAD_FORMAT;
-    
+
     // Get the pointer to "size+hash" block
     pSizeAndHash = (PBLOCK_SIZE_AND_HASH)(pKeyMapping->pbFileData + FilePosition);
     FilePosition += 0x08;
@@ -446,11 +459,11 @@ static int VerifyAndParseKeyMapping_V2(PCASC_MAPPING_TABLE pKeyMapping, DWORD Ke
     FilePosition = ALIGN_TO_SIZE(FilePosition, 0x1000);
     if(FilePosition > pKeyMapping->cbFileData)
         return ERROR_BAD_FORMAT;
-    
+
     LastPartLength = pKeyMapping->cbFileData - FilePosition;
     if(LastPartLength < 0x7800)
         return ERROR_BAD_FORMAT;
-    
+
     pbLastPart = pKeyMapping->pbFileData + FilePosition;
     pbLastPartEnd = pbLastPart + ((LastPartLength >> 0x09) << 0x09);
 
@@ -507,7 +520,7 @@ static int LoadKeyMapping(PCASC_MAPPING_TABLE pKeyMapping, DWORD KeyIndex)
     {
         // Retrieve the file size
         FileStream_GetSize(pStream, &FileSize);
-        if(0 < FileSize && FileSize <= 0x100000)
+        if(0 < FileSize && FileSize <= 0x200000)
         {
             // WoW6 actually reads THE ENTIRE file to memory
             // Verified on Mac build (x64)
@@ -768,7 +781,7 @@ static int LoadEncodingFile(TCascStorage * hs)
     QUERY_KEY EncodingKey;
     LPBYTE pbStartOfSegment;
     LPBYTE pbEncodingFile = NULL;
-    HANDLE hFile = NULL; 
+    HANDLE hFile = NULL;
     DWORD cbEncodingFile = 0;
     DWORD dwNumSegments = 0;
     DWORD dwSegmentsPos = 0;
@@ -856,7 +869,7 @@ static int LoadEncodingFile(TCascStorage * hs)
 static int LoadRootFile(TCascStorage * hs, DWORD dwLocaleMask)
 {
     PDWORD FileSignature;
-    HANDLE hFile = NULL; 
+    HANDLE hFile = NULL;
     LPBYTE pbRootFile = NULL;
     DWORD cbRootFile = 0;
     int nError = ERROR_SUCCESS;
@@ -905,7 +918,7 @@ static int LoadRootFile(TCascStorage * hs, DWORD dwLocaleMask)
         }
     }
 
-    // Insert entry for the 
+    // Insert entry for the
     if(nError == ERROR_SUCCESS)
     {
         InsertExtraFile(hs, "ENCODING", &hs->EncodingKey);
@@ -991,6 +1004,7 @@ static TCascStorage * FreeCascStorage(TCascStorage * hs)
         FreeCascBlob(&hs->ArchivesGroup);
         FreeCascBlob(&hs->ArchivesKey);
         FreeCascBlob(&hs->PatchArchivesKey);
+        FreeCascBlob(&hs->PatchArchivesGroup);
         FreeCascBlob(&hs->RootKey);
         FreeCascBlob(&hs->PatchKey);
         FreeCascBlob(&hs->DownloadKey);
@@ -1010,7 +1024,7 @@ static TCascStorage * FreeCascStorage(TCascStorage * hs)
 
 bool WINAPI CascOpenStorage(const TCHAR * szDataPath, DWORD dwLocaleMask, HANDLE * phStorage)
 {
-    TCascStorage * hs;        
+    TCascStorage * hs;
     int nError = ERROR_SUCCESS;
 
     // Allocate the storage structure
@@ -1040,6 +1054,7 @@ bool WINAPI CascOpenStorage(const TCHAR * szDataPath, DWORD dwLocaleMask, HANDLE
     if(nError == ERROR_SUCCESS)
     {
         nError = LoadIndexFiles(hs);
+        printf("LoadIndexFiles -> 0x%X, indexed entries: %u\n", nError, (hs->pIndexEntryMap != NULL) ? hs->pIndexEntryMap->ItemCount : 0);
     }
 
     // Load the index files
@@ -1074,7 +1089,7 @@ bool WINAPI CascOpenStorage(const TCHAR * szDataPath, DWORD dwLocaleMask, HANDLE
 
 bool WINAPI CascGetStorageInfo(
     HANDLE hStorage,
-    CASC_STORAGE_INFO_CLASS InfoClass, 
+    CASC_STORAGE_INFO_CLASS InfoClass,
     void * pvStorageInfo,
     size_t cbStorageInfo,
     size_t * pcbLengthNeeded)

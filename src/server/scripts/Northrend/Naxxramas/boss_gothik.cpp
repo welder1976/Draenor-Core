@@ -191,7 +191,7 @@ class boss_gothik : public CreatureScript
 
                 if (LiveTriggerGUID.size() < POS_LIVE || DeadTriggerGUID.size() < POS_DEAD)
                 {
-                    sLog->outError(LOG_FILTER_TSCR, "Script Gothik: cannot summon triggers!");
+                    TC_LOG_ERROR("scripts", "Script Gothik: cannot summon triggers!");
                     EnterEvadeMode();
                     return;
                 }
@@ -245,7 +245,7 @@ class boss_gothik : public CreatureScript
 
             void DoGothikSummon(uint32 entry)
             {
-                if (GetDifficulty() == Difficulty::Difficulty25N)
+                if (GetDifficulty() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL)
                 {
                     switch (entry)
                     {
@@ -408,9 +408,9 @@ class boss_gothik : public CreatureScript
                         case EVENT_SUMMON:
                             if (waves[waveCount].entry)
                             {
-                                if ((waves[waveCount].mode == 2) && (GetDifficulty() == Difficulty::Difficulty25N))
+                                if ((waves[waveCount].mode == 2) && (GetDifficulty() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL))
                                    DoGothikSummon(waves[waveCount].entry);
-                                else if ((waves[waveCount].mode == 0) && (GetDifficulty() == Difficulty::Difficulty10N))
+                                else if ((waves[waveCount].mode == 0) && (GetDifficulty() == Difficulty::RAID_DIFFICULTY_10MAN_NORMAL))
                                     DoGothikSummon(waves[waveCount].entry);
                                 else if (waves[waveCount].mode == 1)
                                     DoGothikSummon(waves[waveCount].entry);
@@ -431,9 +431,9 @@ class boss_gothik : public CreatureScript
 
                                 if (waves[waveCount].mode == 1)
                                     events.ScheduleEvent(EVENT_SUMMON, waves[waveCount].time);
-                                else if ((waves[waveCount].mode == 2) && (GetDifficulty() == Difficulty::Difficulty25N))
+                                else if ((waves[waveCount].mode == 2) && (GetDifficulty() == Difficulty::RAID_DIFFICULTY_25MAN_NORMAL))
                                     events.ScheduleEvent(EVENT_SUMMON, waves[waveCount].time);
-                                else if ((waves[waveCount].mode == 0) && (GetDifficulty() == Difficulty::Difficulty10N))
+                                else if ((waves[waveCount].mode == 0) && (GetDifficulty() == Difficulty::RAID_DIFFICULTY_10MAN_NORMAL))
                                     events.ScheduleEvent(EVENT_SUMMON, waves[waveCount].time);
                                 else
                                     events.ScheduleEvent(EVENT_SUMMON, 0);
@@ -594,7 +594,7 @@ class spell_gothik_shadow_bolt_volley: public SpellScriptLoader
 
             void FilterTargets(std::list<WorldObject*>& targets)
             {
-                targets.remove_if(JadeCore::UnitAuraCheck(false, SPELL_SHADOW_MARK));
+                targets.remove_if(Trinity::UnitAuraCheck(false, SPELL_SHADOW_MARK));
             }
 
             void Register()
